@@ -96,11 +96,13 @@ function render(canvas: HTMLCanvasElement, preset: keyof typeof PRESETS) {
   b.fill();
   b.globalCompositeOperation = "destination-in";
   const hg = b.createLinearGradient(0, 0, W, 0);
-  hg.addColorStop(0, "rgba(0,0,0,0.25)");
-  hg.addColorStop(0.22, "rgba(0,0,0,0.7)");
+  hg.addColorStop(0, "rgba(0,0,0,0.08)");
+  hg.addColorStop(0.2, "rgba(0,0,0,0.38)");
+  hg.addColorStop(0.36, "rgba(0,0,0,0.85)");
   hg.addColorStop(0.5, "rgba(0,0,0,1)");
-  hg.addColorStop(0.78, "rgba(0,0,0,0.7)");
-  hg.addColorStop(1, "rgba(0,0,0,0.25)");
+  hg.addColorStop(0.64, "rgba(0,0,0,0.85)");
+  hg.addColorStop(0.8, "rgba(0,0,0,0.38)");
+  hg.addColorStop(1, "rgba(0,0,0,0.08)");
   b.fillStyle = hg;
   b.fillRect(0, 0, W, H);
 
@@ -125,12 +127,12 @@ function render(canvas: HTMLCanvasElement, preset: keyof typeof PRESETS) {
   tile.height = 1;
   const t = tile.getContext("2d")!;
   const sg = t.createLinearGradient(0, 0, tile.width, 0);
-  sg.addColorStop(0, "rgba(0,0,0,0.9)");
-  sg.addColorStop(0.18, "rgba(0,0,0,0.5)");
-  sg.addColorStop(0.42, "rgba(0,0,0,0.04)");
+  sg.addColorStop(0, "rgba(0,0,0,0.62)");
+  sg.addColorStop(0.22, "rgba(0,0,0,0.22)");
+  sg.addColorStop(0.45, "rgba(0,0,0,0.02)");
   sg.addColorStop(0.6, "rgba(0,0,0,0)");
-  sg.addColorStop(0.84, "rgba(0,0,0,0.38)");
-  sg.addColorStop(1, "rgba(0,0,0,0.9)");
+  sg.addColorStop(0.84, "rgba(0,0,0,0.2)");
+  sg.addColorStop(1, "rgba(0,0,0,0.62)");
   t.fillStyle = sg;
   t.fillRect(0, 0, tile.width, 1);
   f.save();
@@ -160,7 +162,7 @@ function render(canvas: HTMLCanvasElement, preset: keyof typeof PRESETS) {
   const ctx = canvas.getContext("2d")!;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  ctx.filter = `blur(${Math.max(0.6, 1.4 * s)}px)`;
+  ctx.filter = `blur(${Math.max(0.8, 2 * s)}px)`;
   ctx.drawImage(fl, 0, 0);
   ctx.filter = "none";
 }

@@ -5,6 +5,7 @@ import "./globals.css";
 import { StoreProvider } from "@/lib/store";
 import SmoothScroll from "@/components/SmoothScroll";
 import { Toasts } from "@/components/Modals";
+import AuthTransition from "@/components/AuthTransition";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-fallback", display: "swap" });
 
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <StoreProvider>
           <SmoothScroll />
           {children}
+          <AuthTransition />
           <Toasts />
         </StoreProvider>
       </body>

@@ -9,6 +9,7 @@ import Fluted from "./Fluted";
 import Fx from "./Fx";
 import { Logo } from "./Icons";
 import SplitHeading from "./SplitHeading";
+import { VCardFace } from "./AuthTransition";
 import { EASE, enter } from "@/lib/motion";
 import { isEmail, useStore } from "@/lib/store";
 
@@ -33,7 +34,7 @@ const SWAP = {
 };
 
 export default function AuthPage({ mode: initialMode }: { mode: "login" | "signup" }) {
-  const { t, login, signup, user, logout, toast, authReady } = useStore();
+  const { t, login, signup, user, logout, toast, authReady, setAuthFx } = useStore();
   const router = useRouter();
   const [mode, setMode] = useState(initialMode);
   const isSignup = mode === "signup";
@@ -54,6 +55,7 @@ export default function AuthPage({ mode: initialMode }: { mode: "login" | "signu
   const [err, setErr] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const [nameFocus, setNameFocus] = useState(false);
 
   // card follows the pointer anywhere on the page
   const mx = useMotionValue(0);
@@ -79,15 +81,31 @@ export default function AuthPage({ mode: initialMode }: { mode: "login" | "signu
     setErr(er);
     if (Object.keys(er).length) return;
     setBusy(true);
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, reduced ? 0 : ms));
+    const fxMode = mode;
+    // 1) card flies in from the side while we talk to the server
+    setAuthFx({ phase: "fly", name: "", mode: fxMode });
+    const started = Date.now();
     const res = isSignup ? await signup(name, email, pw) : await login(email, pw, remember);
-    setBusy(false);
     if ("error" in res) {
+      setAuthFx(null);
+      setBusy(false);
       setErr({ [res.field ?? "form"]: t(res.error) });
       return;
     }
     setDone(true);
-    toast(isSignup ? `${t("Welcome to Velox")}, ${res.user.name.split(" ")[0]}!` : `${t("Welcome back")}, ${res.user.name.split(" ")[0]}!`);
-    setTimeout(() => router.push("/"), 900);
+    await wait(Math.max(0, 1100 - (Date.now() - started)));
+    // 2) the saved account name is typed onto the card
+    const nm = res.user.name;
+    setAuthFx({ phase: "type", name: nm, mode: fxMode });
+    await wait(nm.length * 55 + 1100);
+    // 3) home page mounts underneath, then the card dissolves to reveal it
+    router.push("/");
+    await wait(350);
+    setAuthFx({ phase: "exit", name: nm, mode: fxMode });
+    await wait(950);
+    setAuthFx(null);
   };
 
   return (
@@ -139,26 +157,7 @@ export default function AuthPage({ mode: initialMode }: { mode: "login" | "signu
           <motion.div className="auth-card-wrap" style={{ x: tx, y: ty }}>
             <motion.div className="auth-card" style={{ rotateX: rx, rotateY: ry, transformPerspective: 1100 }}>
               <div className="vcard-shadow" />
-              <div className="vcard-face">
-                <div className="vcard-flutes" />
-                <motion.div className="vcard-sheen" style={{ background: sheen }} />
-                <div className="vcard-top">
-                  <Logo />
-                </div>
-                <div className="vcard-chip" aria-hidden>
-                  <i />
-                  <i />
-                  <i />
-                </div>
-                <div className="vcard-num">4821&nbsp;&nbsp;••••&nbsp;&nbsp;••••&nbsp;&nbsp;7390</div>
-                <div className="vcard-bottom">
-                  <div>
-                    <span>{t("Card holder")}</span>
-                    <b>{(name || user?.name || "YOUR NAME").toUpperCase().slice(0, 22)}</b>
-                  </div>
-                  <em>debit</em>
-                </div>
-              </div>
+              <VCardFace holder={isSignup ? name : user?.name ?? ""} sheen={sheen} caret={isSignup && nameFocus} />
             </motion.div>
           </motion.div>
           <ul className="auth-perks">
@@ -221,7 +220,16 @@ export default function AuthPage({ mode: initialMode }: { mode: "login" | "signu
                     transition={{ duration: 0.45, ease: EASE }}
                   >
                     <label className={`field ${err.name ? "has-error" : ""}`}>
-                      <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" placeholder={t("Full name")} aria-label={t("Full name")} />
+                      <input
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        onFocus={() => setNameFocus(true)}
+                        onBlur={() => setNameFocus(false)}
+                        autoComplete="name"
+                        placeholder={t("Full name")}
+                        aria-label={t("Full name")}
+                        maxLength={40}
+                      />
                       {err.name && <span className="field-error">{err.name}</span>}
                     </label>
                   </motion.div>

@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { ensureSchema, hasDb, sql } from "./db";
 
 /**
  * Minimal JWT (HS256) auth with a JSON-file user store.
@@ -63,6 +64,8 @@ export async function verifyJwt<T = Record<string, unknown>>(token: string | und
   }
 }
 
+/* ---------- storage: Neon Postgres when DATABASE_URL is set, JSON file otherwise ---------- */
+
 async function readUsers(): Promise<StoredUser[]> {
   try {
     return JSON.parse(await readFile(USERS, "utf8"));
@@ -75,24 +78,67 @@ async function writeUsers(u: StoredUser[]) {
   await writeFile(USERS, JSON.stringify(u, null, 2), { mode: 0o600 });
 }
 
+type Row = { id: string; name: string; email: string; hash: string; salt: string; created_at: string | Date };
+const fromRow = (r: Row): StoredUser => ({
+  id: r.id,
+  name: r.name,
+  email: r.email,
+  hash: r.hash,
+  salt: r.salt,
+  createdAt: new Date(r.created_at).toISOString(),
+});
+
+async function userByEmail(email: string): Promise<StoredUser | null> {
+  if (hasDb()) {
+    await ensureSchema();
+    const rows = (await sql()`SELECT * FROM velox_users WHERE email = ${email} LIMIT 1`) as Row[];
+    return rows[0] ? fromRow(rows[0]) : null;
+  }
+  return (await readUsers()).find((x) => x.email === email) ?? null;
+}
+
+async function userById(id: string): Promise<StoredUser | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  if (hasDb()) {
+    await ensureSchema();
+    const rows = (await sql()`SELECT * FROM velox_users WHERE id = ${id} LIMIT 1`) as Row[];
+    return rows[0] ? fromRow(rows[0]) : null;
+  }
+  return (await readUsers()).find((x) => x.id === id) ?? null;
+}
+
+async function insertUser(u: StoredUser): Promise<boolean> {
+  if (hasDb()) {
+    await ensureSchema();
+    const rows = (await sql()`
+      INSERT INTO velox_users (id, name, email, hash, salt, created_at)
+      VALUES (${u.id}, ${u.name}, ${u.email}, ${u.hash}, ${u.salt}, ${u.createdAt})
+      ON CONFLICT (email) DO NOTHING
+      RETURNING id`) as { id: string }[];
+    return rows.length === 1;
+  }
+  const users = await readUsers();
+  if (users.some((x) => x.email === u.email)) return false;
+  users.push(u);
+  await writeUsers(users);
+  return true;
+}
+
 const hashPw = (pw: string, salt: string) => scryptSync(pw, salt, 64).toString("hex");
 const pub = ({ id, name, email, createdAt }: StoredUser): User => ({ id, name, email, createdAt });
 
 export const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s);
 
 export async function createUser(name: string, email: string, password: string) {
-  const users = await readUsers();
   const e = email.trim().toLowerCase();
-  if (users.some((u) => u.email === e)) return { error: "An account with this e-mail already exists." as const };
   const salt = randomBytes(16).toString("hex");
   const u: StoredUser = { id: randomUUID(), name: name.trim(), email: e, createdAt: new Date().toISOString(), salt, hash: hashPw(password, salt) };
-  users.push(u);
-  await writeUsers(users);
+  if (!(await insertUser(u))) return { error: "An account with this e-mail already exists." as const };
   return { user: pub(u) };
 }
 
 export async function checkCredentials(email: string, password: string) {
-  const u = (await readUsers()).find((x) => x.email === email.trim().toLowerCase());
+  const u = await userByEmail(email.trim().toLowerCase());
   if (!u) {
     hashPw(password, "timing-equalizer"); // keep timing similar for unknown e-mails
     return null;
@@ -103,8 +149,45 @@ export async function checkCredentials(email: string, password: string) {
 }
 
 export async function findUser(id: string) {
-  const u = (await readUsers()).find((x) => x.id === id);
+  const u = await userById(id);
   return u ? pub(u) : null;
+}
+
+/* ---------- per-user app data (loans, payments, subscriptions, calls) ---------- */
+
+const DATA_DIR = path.join(DIR, "user-data");
+
+export async function getUserData(userId: string): Promise<Record<string, unknown> | null> {
+  if (hasDb()) {
+    await ensureSchema();
+    const rows = (await sql()`SELECT data FROM velox_user_data WHERE user_id = ${userId}`) as { data: Record<string, unknown> }[];
+    return rows[0]?.data ?? null;
+  }
+  try {
+    return JSON.parse(await readFile(path.join(DATA_DIR, userId + ".json"), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+export async function setUserData(userId: string, data: Record<string, unknown>) {
+  if (hasDb()) {
+    await ensureSchema();
+    await sql()`
+      INSERT INTO velox_user_data (user_id, data, updated_at)
+      VALUES (${userId}, ${JSON.stringify(data)}::jsonb, now())
+      ON CONFLICT (user_id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`;
+    return;
+  }
+  await mkdir(DATA_DIR, { recursive: true });
+  await writeFile(path.join(DATA_DIR, userId + ".json"), JSON.stringify(data), { mode: 0o600 });
+}
+
+/** Resolve the signed-in user from the JWT cookie (or Bearer header). */
+export async function sessionUser(req: Request, cookieValue: string | undefined) {
+  const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  const payload = await verifyJwt<{ sub: string }>(bearer || cookieValue);
+  return payload ? findUser(payload.sub) : null;
 }
 
 export const cookieOptions = {

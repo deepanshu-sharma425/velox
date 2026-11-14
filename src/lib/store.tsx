@@ -44,6 +44,8 @@ export const LANGS: { code: Lang; name: string }[] = [
 const HTML_LANG: Record<Lang, string> = { ENG: "en", ESP: "es", DEU: "de", FRA: "fr", HIN: "hi" };
 
 export type User = { id: string; name: string; email: string; createdAt: string };
+/** Cinematic login/signup hand-off rendered above every page. */
+export type AuthFx = { phase: "fly" | "type" | "exit"; name: string; mode: "login" | "signup" } | null;
 type AuthResult = { ok: true; user: User } | { ok: false; error: string; field?: string };
 
 type Ctx = Data & {
@@ -66,6 +68,8 @@ type Ctx = Data & {
   login: (email: string, password: string, remember?: boolean) => Promise<AuthResult>;
   signup: (name: string, email: string, password: string) => Promise<AuthResult>;
   logout: () => Promise<void>;
+  authFx: AuthFx;
+  setAuthFx: (f: AuthFx) => void;
 };
 
 const KEY = "velox:v2";
@@ -80,6 +84,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<Lang>("ENG");
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [authFx, setAuthFx] = useState<AuthFx>(null);
   const tid = useRef(0);
   const dataKey = user ? `${KEY}:${user.id}` : KEY;
   const loadedKey = useRef<string | null>(null);
@@ -100,25 +105,61 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
-  // load the data bucket of the current user (or guest)
+  // load the data bucket of the current user (server first) or the guest (local)
   useEffect(() => {
     if (!authReady) return;
-    try {
-      const raw = localStorage.getItem(dataKey);
-      setData(raw ? { ...EMPTY, ...JSON.parse(raw) } : EMPTY);
-    } catch {
-      setData(EMPTY);
+    let cancelled = false;
+    const local = (k: string): Data | null => {
+      try {
+        const raw = localStorage.getItem(k);
+        return raw ? { ...EMPTY, ...JSON.parse(raw) } : null;
+      } catch {
+        return null;
+      }
+    };
+    const isEmpty = (d: Data | null) => !d || (!d.loans.length && !d.subscriptions.length && !d.calls.length);
+    const finish = (d: Data) => {
+      if (cancelled) return;
+      setData(d);
+      loadedKey.current = dataKey;
+      setReady(true);
+    };
+    if (!user) {
+      finish(local(dataKey) ?? EMPTY);
+      return;
     }
-    loadedKey.current = dataKey;
-    setReady(true);
-  }, [dataKey, authReady]);
+    loadedKey.current = null; // block saves until the server answered
+    fetch("/api/data", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : { data: null }))
+      .catch(() => ({ data: null }))
+      .then(({ data: remote }) => {
+        if (remote && !isEmpty({ ...EMPTY, ...remote })) return finish({ ...EMPTY, ...remote });
+        // first sign-in: keep anything the visitor did as a guest
+        const mine = local(dataKey);
+        finish(!isEmpty(mine) ? mine! : local(KEY) ?? EMPTY);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dataKey, authReady, user]);
 
+  // persist: localStorage always, Postgres (debounced) when signed in
   useEffect(() => {
     if (!ready || loadedKey.current !== dataKey) return;
     try {
       localStorage.setItem(dataKey, JSON.stringify(data));
     } catch {}
-  }, [data, ready, dataKey]);
+    if (!user) return;
+    const id = setTimeout(() => {
+      fetch("/api/data", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify(data),
+      }).catch(() => {});
+    }, 500);
+    return () => clearTimeout(id);
+  }, [data, ready, dataKey, user]);
 
   useEffect(() => {
     document.documentElement.style.overflow = modal ? "hidden" : "";
@@ -190,6 +231,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       login,
       signup,
       logout,
+      authFx,
+      setAuthFx,
       addLoan: (l) => {
         const loan: Loan = {
           ...l,
@@ -231,7 +274,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       bookCall: (c) => setData((d) => ({ ...d, calls: [...d.calls, { ...c, date: new Date().toISOString() }] })),
       reset: () => setData(EMPTY),
     }),
-    [data, ready, modal, toast, toasts, lang, setLang, t, user, authReady, login, signup, logout],
+    [data, ready, modal, toast, toasts, lang, setLang, t, user, authReady, login, signup, logout, authFx],
   );
 
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;

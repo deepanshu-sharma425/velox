@@ -909,7 +909,7 @@ svg {
   color: rgba(255, 255, 255, 0.85);
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
 }
-.sleeve-brand > span {
+.sleeve-brand > span:not(.logo) {
   font-size: 1.1rem;
   letter-spacing: 0.32em;
   text-transform: uppercase;
@@ -3451,7 +3451,7 @@ html.has-cursor select {
 }
 .auth-lead {
   margin-top: 2.4rem;
-  max-width: 52rem;
+  max-width: 64rem;
 }
 .auth-shell {
   position: relative;
@@ -3559,11 +3559,11 @@ html.has-cursor select {
   background: rgba(255, 255, 255, 0.05);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
-.collapse {
+.auth-collapse {
   overflow: hidden;
   padding-bottom: 0.2rem;
 }
-.collapse .field-error {
+.auth-collapse .field-error {
   position: static;
   display: block;
   margin-top: 0.4rem;
@@ -3762,6 +3762,9 @@ html.has-cursor select {
 .bundle {
   z-index: 3;
 }
+.flyer {
+  z-index: 1;
+}
 .bundle-bill {
   position: absolute;
   inset: 0;
@@ -3841,12 +3844,25 @@ html.has-cursor select {
   background: linear-gradient(90deg, #d8460b, #ff7d1e 50%, #d8460b);
   box-shadow: 0 0.4rem 1rem rgba(0, 0, 0, 0.4);
 }
+.celebrate-copy::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  z-index: -1;
+  width: 90rem;
+  height: 52rem;
+  margin: -26rem 0 0 -45rem;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0.5) 55%, transparent);
+  pointer-events: none;
+}
 .celebrate-copy {
   position: absolute;
   left: 0;
   right: 0;
   top: 50%;
   z-index: 5;
+  isolation: isolate;
   margin-top: -3rem;
   padding: 0 2rem;
   display: flex;

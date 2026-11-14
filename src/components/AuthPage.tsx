@@ -213,7 +213,7 @@ export default function AuthPage({ mode: initialMode }: { mode: "login" | "signu
                 {isSignup && (
                   <motion.div
                     key="name"
-                    className="collapse"
+                    className="auth-collapse"
                     variants={COLLAPSE}
                     initial="hidden"
                     animate="shown"
@@ -250,7 +250,7 @@ export default function AuthPage({ mode: initialMode }: { mode: "login" | "signu
               {isSignup && (
                 <motion.div
                   key="strength"
-                  className="collapse"
+                  className="auth-collapse"
                   variants={COLLAPSE}
                   initial="hidden"
                   animate="shown"

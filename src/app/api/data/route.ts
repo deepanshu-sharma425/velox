@@ -26,6 +26,20 @@ export async function PUT(req: Request) {
   if (!d || typeof d !== "object" || !["loans", "subscriptions", "calls"].every((k) => Array.isArray(d[k])))
     return Response.json({ error: "Invalid data shape." }, { status: 400 });
 
-  await setUserData(user.id, { loans: d.loans, subscriptions: d.subscriptions, calls: d.calls });
+  const out: Record<string, unknown> = { loans: d.loans, subscriptions: d.subscriptions, calls: d.calls };
+  const card = cleanCard(d.card);
+  if (card) out.card = card;
+  await setUserData(user.id, out);
   return Response.json({ ok: true });
+}
+
+/** Card controls: four booleans and a monthly spending limit (USD base). */
+function cleanCard(v: unknown) {
+  if (!v || typeof v !== "object") return null;
+  const c = v as Record<string, unknown>;
+  const bools = ["frozen", "online", "contactless", "atm"] as const;
+  if (!bools.every((k) => typeof c[k] === "boolean")) return null;
+  const limit = Number(c.limit);
+  if (!Number.isFinite(limit) || limit < 0 || limit > 1_000_000) return null;
+  return { frozen: c.frozen, online: c.online, contactless: c.contactless, atm: c.atm, limit: Math.round(limit) };
 }

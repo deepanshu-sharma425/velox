@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { DICTS } from "./i18n";
+import { Currency, isCurrency, money as fmtMoney } from "./finance";
 
 export type Loan = {
   id: string;
@@ -15,18 +16,31 @@ export type Loan = {
   name: string;
   email: string;
   status: "active" | "closed";
-  payments: { date: string; amount: number }[];
-  /** Where the money was sent: the customer's Velox card or an external bank card. */
-  payout?: "velox" | "card";
+  /** `method` says what paid it; older records without one were paid from the Velox card. */
+  payments: { date: string; amount: number; method?: "velox" | "card"; card4?: string }[];
+  /** Where the money was sent: the Velox card, an external bank card or a linked bank account. */
+  payout?: "velox" | "card" | "bank";
   card4?: string;
+  /** Linked bank (payout = "bank"). */
+  bank?: string;
+  /** Promo discount on service fees (0–1). */
+  feeDiscount?: number;
+  /** Borrower's e-signature on the loan agreement. */
+  signature?: Signature;
   purpose?: string;
   closedAt?: string;
 };
 
+/** Drawn strokes are point lists in a 0–1000 × 0–300 box; typed signatures keep the text. */
+export type Signature = { kind: "draw"; strokes: number[][] } | { kind: "type"; text: string };
+
+export type CardSettings = { frozen: boolean; online: boolean; contactless: boolean; atm: boolean; limit: number };
+export const DEFAULT_CARD: CardSettings = { frozen: false, online: true, contactless: true, atm: true, limit: 5000 };
+
 export type Subscription = { email: string; name?: string; source: string; date: string };
 export type CallRequest = { name: string; phone: string; date: string };
 
-type Data = { loans: Loan[]; subscriptions: Subscription[]; calls: CallRequest[] };
+type Data = { loans: Loan[]; subscriptions: Subscription[]; calls: CallRequest[]; card?: CardSettings };
 
 export type ApplyPreset = { amount?: number; months?: number; plan?: string; promo?: string };
 
@@ -35,7 +49,7 @@ export type ModalState =
   | { type: "pay"; loanId?: string }
   | { type: "account" }
   | { type: "info"; key: string }
-  | { type: "menu" }
+  | { type: "menu"; nav?: { id: string; label: string }[] }
   | null;
 
 export type Lang = "ENG" | "ESP" | "DEU" | "FRA" | "HIN";
@@ -61,7 +75,9 @@ type Ctx = Data & {
   toast: (msg: string) => void;
   toasts: { id: number; msg: string }[];
   addLoan: (l: Omit<Loan, "id" | "createdAt" | "paid" | "status" | "payments">) => Loan;
-  pay: (loanId: string, amount: number) => Loan | undefined;
+  pay: (loanId: string, amount: number, method?: "velox" | "card", card4?: string) => Loan | undefined;
+  /** The name printed on the customer's Velox card: the account name, or the latest borrower name for guests. */
+  holderName: string;
   subscribe: (s: Omit<Subscription, "date">) => boolean;
   bookCall: (c: Omit<CallRequest, "date">) => void;
   reset: () => void;
@@ -75,6 +91,12 @@ type Ctx = Data & {
   logout: () => Promise<void>;
   authFx: AuthFx;
   setAuthFx: (f: AuthFx) => void;
+  currency: Currency;
+  setCurrency: (c: Currency) => void;
+  /** Formats a USD-base amount in the visitor's currency. */
+  money: (usdAmount: number, cents?: boolean) => string;
+  card: CardSettings;
+  setCard: (patch: Partial<CardSettings>) => void;
 };
 
 const KEY = "velox:v2";
@@ -90,6 +112,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [authFx, setAuthFx] = useState<AuthFx>(null);
+  const [currency, setCurrencyState] = useState<Currency>("USD");
   const tid = useRef(0);
   const dataKey = user ? `${KEY}:${user.id}` : KEY;
   const loadedKey = useRef<string | null>(null);
@@ -107,6 +130,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setLangState(l);
         document.documentElement.lang = HTML_LANG[l];
       }
+      const c = localStorage.getItem(KEY + ":cur");
+      if (isCurrency(c)) setCurrencyState(c);
     } catch {}
   }, []);
 
@@ -122,7 +147,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
     };
-    const isEmpty = (d: Data | null) => !d || (!d.loans.length && !d.subscriptions.length && !d.calls.length);
+    const isEmpty = (d: Data | null) => !d || (!d.loans.length && !d.subscriptions.length && !d.calls.length && !d.card);
     const finish = (d: Data) => {
       if (cancelled) return;
       setData(d);
@@ -188,6 +213,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
+  const setCurrency = useCallback((c: Currency) => {
+    setCurrencyState(c);
+    try {
+      localStorage.setItem(KEY + ":cur", c);
+    } catch {}
+  }, []);
+  const money = useCallback((n: number, cents = false) => fmtMoney(n, currency, cents), [currency]);
+  const card = useMemo(() => ({ ...DEFAULT_CARD, ...data.card }), [data.card]);
+
   const t = useCallback((s: string) => (lang === "ENG" ? s : DICTS[lang]?.[s] ?? s), [lang]);
 
   const authCall = useCallback(async (url: string, body: object): Promise<AuthResult> => {
@@ -238,6 +272,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       logout,
       authFx,
       setAuthFx,
+      currency,
+      setCurrency,
+      money,
+      card,
+      setCard: (patch) => setData((d) => ({ ...d, card: { ...DEFAULT_CARD, ...d.card, ...patch } })),
       addLoan: (l) => {
         const loan: Loan = {
           ...l,
@@ -250,7 +289,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setData((d) => ({ ...d, loans: [loan, ...d.loans] }));
         return loan;
       },
-      pay: (loanId, amount) => {
+      holderName: (user?.name ?? data.loans[0]?.name ?? "").trim(),
+      pay: (loanId, amount, method = "velox", card4) => {
         const cur = data.loans.find((l) => l.id === loanId);
         if (!cur || cur.status !== "active") return undefined;
         const paid = Math.min(cur.total, Math.round((cur.paid + amount) * 100) / 100);
@@ -261,7 +301,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           paid: closed ? cur.total : paid,
           status: closed ? "closed" : "active",
           closedAt: closed ? now : undefined,
-          payments: [{ date: now, amount }, ...cur.payments],
+          payments: [{ date: now, amount, method, ...(method === "card" && card4 ? { card4 } : {}) }, ...cur.payments],
         };
         setData((d) => ({ ...d, loans: d.loans.map((l) => (l.id === loanId ? updated : l)) }));
         return updated;
@@ -277,7 +317,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       bookCall: (c) => setData((d) => ({ ...d, calls: [...d.calls, { ...c, date: new Date().toISOString() }] })),
       reset: () => setData(EMPTY),
     }),
-    [data, ready, modal, toast, toasts, lang, setLang, t, user, authReady, login, signup, logout, authFx],
+    [data, ready, modal, toast, toasts, lang, setLang, t, user, authReady, login, signup, logout, authFx, currency, setCurrency, money, card],
   );
 
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
@@ -291,10 +331,18 @@ export function useStore() {
 
 /** Each signed-in customer gets a stable virtual Velox card number. */
 export function veloxCard(seed?: string) {
-  if (!seed) return { first4: "4821", last4: "7390" };
   let h = 7;
-  for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return { first4: "4821", last4: String(1000 + (h % 9000)) };
+  for (const c of seed ?? "guest") h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  const pick = (n: number, salt: number) => String(Math.floor(((h ^ salt) >>> 0) % 10 ** n)).padStart(n, "0");
+  const last4 = seed ? String(1000 + (h % 9000)) : "7390";
+  return {
+    first4: "4821",
+    last4,
+    /** the eight hidden middle digits, shown on the back of the card */
+    mid: `${pick(4, 0x5bd1e995)} ${pick(4, 0x27d4eb2f)}`,
+    cvv: pick(3, 0x165667b1),
+    expiry: "09/29",
+  };
 }
 
 export const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s.trim());
@@ -306,4 +354,10 @@ export function scrollToId(id: string) {
   const lenis = (window as unknown as { __lenis?: { scrollTo: (t: number, o?: object) => void } }).__lenis;
   if (lenis) lenis.scrollTo(y, { duration: 1.4 });
   else window.scrollTo({ top: y, behavior: "smooth" });
+}
+
+/** One wording for "where did the money go", used by every screen and the PDF. */
+export function payoutText(l: Pick<Loan, "payout" | "bank" | "card4">, t: (s: string) => string = (x) => x) {
+  const where = l.payout === "bank" ? l.bank ?? t("Bank account") : l.payout === "card" ? t("Bank card") : t("Velox card");
+  return l.card4 ? `${where} •••• ${l.card4}` : where;
 }

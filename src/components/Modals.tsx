@@ -1,18 +1,18 @@
 "use client";
 
-import { X } from "lucide-react";
+import { ArrowUpRight, LayoutDashboard, X } from "lucide-react";
 import { IconUser, Logo } from "./Icons";
 import { NAV } from "./Header";
 import { INFO, PLANS } from "@/lib/content";
-import { addMonths, ddmmyyyy, quote, usd } from "@/lib/finance";
-import { LANGS, scrollToId, useStore } from "@/lib/store";
+import { CURRENCIES, FX, addMonths, ddmmyyyy, quote } from "@/lib/finance";
+import { LANGS, payoutText, scrollToId, useStore } from "@/lib/store";
 import { ApplyModal, PayModal } from "./LoanFlow";
 import { Shell } from "./ModalParts";
 
 /* ---------- Account ---------- */
 
 function AccountPanel() {
-  const { t, close, loans, subscriptions, calls, open, reset, user, logout, toast } = useStore();
+  const { t, close, loans, subscriptions, calls, open, reset, user, logout, toast, money } = useStore();
   const active = loans.filter((l) => l.status === "active");
   const owed = active.reduce((s, l) => s + (l.total - l.paid), 0);
   return (
@@ -56,6 +56,14 @@ function AccountPanel() {
             </div>
           </div>
         )}
+        <a className="acc-dash" href="/dashboard">
+          <LayoutDashboard strokeWidth={1.4} />
+          <span>
+            <b>{t("Open dashboard")}</b>
+            <small>{t("Card controls, spending analytics & credit score")}</small>
+          </span>
+          <ArrowUpRight strokeWidth={1.4} />
+        </a>
         <div className="acc-stats">
           <div>
             <span>{t("Active loans")}</span>
@@ -63,7 +71,7 @@ function AccountPanel() {
           </div>
           <div>
             <span>{t("Outstanding")}</span>
-            <b>{usd(owed, true)}</b>
+            <b>{money(owed, true)}</b>
           </div>
         </div>
 
@@ -93,19 +101,14 @@ function AccountPanel() {
                     <span className={`badge ${l.status}`}>{l.status === "active" ? t("Active") : t("Repaid")}</span>
                   </div>
                   <div className="acc-loan-meta">
-                    {t(l.plan)} · {usd(l.principal)} · {l.months} {t("months")}
-                    {l.card4 && (
-                      <>
-                        {" "}
-                        · {l.payout === "card" ? t("Bank card") : t("Velox card")} •••• {l.card4}
-                      </>
-                    )}
+                    {t(l.plan)} · {money(l.principal)} · {l.months} {t("months")}
+                    {l.card4 && <> · {payoutText(l, t)}</>}
                   </div>
                   <div className="bar">
                     <i style={{ width: p + "%" }} />
                   </div>
                   <div className="acc-loan-meta">
-                    {t("Paid")} {usd(l.paid, true)} {t("of")} {usd(l.total, true)}
+                    {t("Paid")} {money(l.paid, true)} {t("of")} {money(l.total, true)}
                     {l.status === "active" ? (
                       <>
                         {" "}
@@ -122,7 +125,7 @@ function AccountPanel() {
                   </div>
                   {l.status === "active" && (
                     <button className="btn btn-ghost btn-sm" onClick={() => open({ type: "pay", loanId: l.id })}>
-                      {t("Pay")} {usd(Math.min(l.monthly, l.total - l.paid), true)}
+                      {t("Pay")} {money(Math.min(l.monthly, l.total - l.paid), true)}
                     </button>
                   )}
                 </div>
@@ -170,7 +173,7 @@ function AccountPanel() {
 /* ---------- Info ---------- */
 
 function InfoModal({ k }: { k: string }) {
-  const { t, close, open } = useStore();
+  const { t, close, open, money } = useStore();
   if (k.startsWith("plan:")) {
     const p = PLANS.find((x) => "plan:" + x.id === k)!;
     const q = quote(Math.round((p.min + p.max) / 2 / 500) * 500, p.term);
@@ -181,7 +184,7 @@ function InfoModal({ k }: { k: string }) {
           <div>
             <span>{t("Loan amount")}</span>
             <b>
-              {usd(p.min)} - {usd(p.max)}
+              {money(p.min)} - {money(p.max)}
             </b>
           </div>
           <div>
@@ -204,10 +207,10 @@ function InfoModal({ k }: { k: string }) {
           </div>
           <div>
             <span>
-              {t("Example")}: {usd(q.principal)} / {p.term} {t("mo")}
+              {t("Example")}: {money(q.principal)} / {p.term} {t("mo")}
             </span>
             <b>
-              {usd(q.monthly, true)} {t("per month")}
+              {money(q.monthly, true)} {t("per month")}
             </b>
           </div>
         </div>
@@ -261,14 +264,14 @@ function InfoModal({ k }: { k: string }) {
               const q = quote(a, m);
               return (
                 <tr key={a}>
-                  <td>{usd(a)}</td>
+                  <td>{money(a)}</td>
                   <td>
                     {m} {t("mo")}
                   </td>
-                  <td>{usd(q.interest)}</td>
-                  <td>{usd(q.fees)}</td>
-                  <td>{usd(q.monthly, true)}</td>
-                  <td>{usd(q.total)}</td>
+                  <td>{money(q.interest)}</td>
+                  <td>{money(q.fees)}</td>
+                  <td>{money(q.monthly, true)}</td>
+                  <td>{money(q.total)}</td>
                 </tr>
               );
             })}
@@ -287,8 +290,8 @@ function InfoModal({ k }: { k: string }) {
 
 /* ---------- Mobile menu ---------- */
 
-function MobileMenu() {
-  const { t, close, open, lang, setLang } = useStore();
+function MobileMenu({ nav }: { nav?: { id: string; label: string }[] }) {
+  const { t, close, open, lang, setLang, currency, setCurrency, user } = useStore();
   return (
     <div className="mmenu">
       <div className="mmenu-head">
@@ -303,7 +306,7 @@ function MobileMenu() {
         </button>
       </div>
       <nav className="mmenu-nav">
-        {NAV.map((n) => (
+        {(nav ?? NAV).map((n) => (
           <button
             key={n.id}
             onClick={() => {
@@ -314,11 +317,23 @@ function MobileMenu() {
             {t(n.label)}
           </button>
         ))}
+        {nav ? (
+          <button onClick={() => window.location.assign("/")}>{t("Back to site")}</button>
+        ) : (
+          user && <button onClick={() => window.location.assign("/dashboard")}>{t("Dashboard")}</button>
+        )}
       </nav>
       <div className="mmenu-lang">
         {LANGS.map((l) => (
           <button key={l.code} className={l.code === lang ? "is-active" : ""} onClick={() => setLang(l.code)}>
             {l.code}
+          </button>
+        ))}
+      </div>
+      <div className="mmenu-lang mmenu-cur" aria-label={t("Currency")}>
+        {CURRENCIES.map((c) => (
+          <button key={c} className={c === currency ? "is-active" : ""} onClick={() => setCurrency(c)}>
+            {FX[c].symbol} {c}
           </button>
         ))}
       </div>
@@ -358,7 +373,7 @@ export default function Modals() {
       {modal?.type === "pay" && <PayModal loanId={modal.loanId} />}
       {modal?.type === "account" && <AccountPanel />}
       {modal?.type === "info" && <InfoModal k={modal.key} />}
-      {modal?.type === "menu" && <MobileMenu />}
+      {modal?.type === "menu" && <MobileMenu nav={modal.nav} />}
     </>
   );
 }

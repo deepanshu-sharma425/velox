@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Dancing_Script, Inter } from "next/font/google";
 import "lenis/dist/lenis.css";
 import "./globals.css";
 import { StoreProvider } from "@/lib/store";
@@ -8,6 +8,7 @@ import { Toasts } from "@/components/Modals";
 import AuthTransition from "@/components/AuthTransition";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-fallback", display: "swap" });
+const sign = Dancing_Script({ subsets: ["latin"], variable: "--font-sign", display: "swap", weight: ["600"] });
 
 export const viewport: Viewport = {
   themeColor: "#000000",
@@ -23,7 +24,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={`${inter.variable} ${sign.variable}`}>
       <body>
         <StoreProvider>
           <SmoothScroll />

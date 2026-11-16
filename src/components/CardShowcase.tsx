@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import {
+  AnimatePresence,
   motion,
   useMotionTemplate,
   useMotionValue,
@@ -10,7 +11,10 @@ import {
   useSpring,
   useTransform,
 } from "framer-motion";
+import { RotateCcw, Snowflake } from "lucide-react";
 import { Logo } from "./Icons";
+import { VCardFace } from "./AuthTransition";
+import { CardFlip, VCardBack } from "./CardFx";
 import { useStore, veloxCard } from "@/lib/store";
 
 /**
@@ -21,8 +25,22 @@ import { useStore, veloxCard } from "@/lib/store";
  *  0.80–1.00  hold — captions in, card follows the mouse
  */
 export default function CardShowcase() {
-  const { t, open, user } = useStore();
-  const card = veloxCard(user?.id);
+  const { t, open, user, card, setCard, toast, holderName } = useStore();
+  const vc = veloxCard(user?.id);
+  const [flipped, setFlipped] = useState(false);
+  const labels = { holder: t("Card holder"), valid: t("Valid thru"), frozen: t("Frozen") };
+  const backLabels = {
+    reveal: t("Show details"),
+    hide: t("Hide"),
+    frozen: t("Frozen"),
+    authorized: t("Authorized signature"),
+    service: t("Customer service 24/7 · +1 800 835 6900 · velox.bank"),
+  };
+  const toggleFreeze = () => {
+    const next = !card.frozen;
+    setCard({ frozen: next });
+    toast(next ? t("Card frozen — all payments are blocked.") : t("Card unfrozen — you’re good to go."));
+  };
   const ref = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end end"] });
   const p = useSpring(scrollYProgress, { stiffness: 140, damping: 28, mass: 0.35 });
@@ -39,7 +57,10 @@ export default function CardShowcase() {
   const cardScale = useTransform(p, [0.5, 0.8], [1, 1.22]);
   const cardShadow = useTransform(p, [0.4, 0.8], [0, 1]);
   const [front, setFront] = useState(false);
-  useMotionValueEvent(p, "change", (v) => setFront(v > 0.5));
+  useMotionValueEvent(p, "change", (v) => {
+    setFront(v > 0.5);
+    if (v < 0.5) setFlipped(false);
+  });
 
   // sleeve
   const sleeveY = useTransform(p, [0.5, 0.8], ["0rem", "46rem"]);
@@ -120,35 +141,34 @@ export default function CardShowcase() {
           >
             <motion.div className="vcard" style={{ rotateX: tiltX, rotateY: tiltY, transformPerspective: 1200 }}>
               <motion.div className="vcard-shadow" style={{ opacity: cardShadow }} />
-              <div className="vcard-face">
-                <div className="vcard-flutes" />
-                <motion.div className="vcard-sheen" style={{ background: sheen }} />
-                <div className="vcard-top">
-                  <Logo />
-                  <svg viewBox="0 0 24 24" className="vcard-nfc" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
-                    <path d="M8.5 8.5a5 5 0 0 1 0 7M12 6a8.5 8.5 0 0 1 0 12M15.5 3.5a12 12 0 0 1 0 17" />
-                  </svg>
-                </div>
-                <div className="vcard-chip" aria-hidden>
-                  <i />
-                  <i />
-                  <i />
-                </div>
-                <div className="vcard-num">
-                  {card.first4}&nbsp;&nbsp;••••&nbsp;&nbsp;••••&nbsp;&nbsp;{card.last4}
-                </div>
-                <div className="vcard-bottom">
-                  <div>
-                    <span>{t("Card holder")}</span>
-                    <b>{(user?.name.trim() || t("YOUR NAME")).toUpperCase().slice(0, 22)}</b>
-                  </div>
-                  <div>
-                    <span>{t("Valid thru")}</span>
-                    <b>09/29</b>
-                  </div>
-                  <em>debit</em>
-                </div>
-              </div>
+              <CardFlip
+                flipped={flipped}
+                onToggle={front ? () => setFlipped((v) => !v) : undefined}
+                label={t("Flip card")}
+                front={
+                  <VCardFace
+                    holder={holderName}
+                    placeholder={t("YOUR NAME")}
+                    sheen={sheen}
+                    number={`${vc.first4}\u00a0\u00a0••••\u00a0\u00a0••••\u00a0\u00a0${vc.last4}`}
+                    expiry={vc.expiry}
+                    frozen={card.frozen}
+                    labels={labels}
+                  />
+                }
+                back={
+                  <VCardBack
+                    holder={holderName}
+                    first4={vc.first4}
+                    mid={vc.mid}
+                    last4={vc.last4}
+                    cvv={vc.cvv}
+                    expiry={vc.expiry}
+                    frozen={card.frozen}
+                    labels={backLabels}
+                  />
+                }
+              />
             </motion.div>
           </motion.div>
 
@@ -165,6 +185,25 @@ export default function CardShowcase() {
             <div className="sleeve-edge" />
           </motion.div>
         </motion.div>
+
+        <AnimatePresence>
+          {front && (
+            <motion.div
+              className="unbox-controls"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
+              transition={{ duration: 0.4 }}
+            >
+              <button className="card-ctl" onClick={() => setFlipped((v) => !v)} aria-pressed={flipped}>
+                <RotateCcw strokeWidth={1.5} /> {flipped ? t("Show front") : t("Flip card")}
+              </button>
+              <button className={`card-ctl ${card.frozen ? "is-ice" : ""}`} onClick={toggleFreeze} aria-pressed={card.frozen}>
+                <Snowflake strokeWidth={1.5} /> {card.frozen ? t("Unfreeze") : t("Freeze card")}
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <motion.div className="unbox-hint" style={{ opacity: hint }}>
           {t("Scroll to unbox")}

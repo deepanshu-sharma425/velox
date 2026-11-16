@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarDays, ChevronUp, DollarSign, Minus, Plus } from "lucide-react";
+import { CalendarDays, ChevronUp, DollarSign, Euro, FileDown, LoaderCircle, Minus, Plus, PoundSterling } from "lucide-react";
+import AmortChart from "./AmortChart";
+import { downloadStatement } from "@/lib/download";
 import { motion } from "framer-motion";
 import { cardReveal, reveal } from "@/lib/motion";
 import SplitHeading from "./SplitHeading";
@@ -15,7 +17,6 @@ import {
   clamp,
   ddmmyyyy,
   quote,
-  usd,
 } from "@/lib/finance";
 import { scrollToId, useStore } from "@/lib/store";
 
@@ -56,7 +57,9 @@ function Slider({
 }
 
 export default function Calculator() {
-  const { t, open } = useStore();
+  const { t, open, money, currency, user, toast } = useStore();
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const CurIcon = currency === "EUR" ? Euro : currency === "GBP" ? PoundSterling : DollarSign;
   const [amount, setAmount] = useState(55500);
   const [months, setMonths] = useState(36);
   const [schedOpen, setSchedOpen] = useState(true);
@@ -81,13 +84,13 @@ export default function Calculator() {
 
           <div className="calc-row">
             <span className="calc-label">
-              <DollarSign strokeWidth={1.3} /> {t("Loan amount")}
+              <CurIcon strokeWidth={1.3} /> {t("Loan amount")}
             </span>
             <span className="stepper">
               <button aria-label="Increase amount" onClick={() => setAmount((a) => clamp(a + AMOUNT_STEP, AMOUNT_MIN, AMOUNT_MAX))}>
                 <Plus strokeWidth={1.4} />
               </button>
-              <span className="stepper-val">{usd(amount)}</span>
+              <span className="stepper-val">{money(amount)}</span>
               <button aria-label="Decrease amount" onClick={() => setAmount((a) => clamp(a - AMOUNT_STEP, AMOUNT_MIN, AMOUNT_MAX))}>
                 <Minus strokeWidth={1.4} />
               </button>
@@ -95,8 +98,8 @@ export default function Calculator() {
           </div>
           <Slider value={amount} min={AMOUNT_MIN} max={AMOUNT_MAX} step={AMOUNT_STEP} onChange={setAmount} label={t("Loan amount")} />
           <div className="range-limits">
-            <span>{usd(AMOUNT_MIN)}</span>
-            <span>{usd(AMOUNT_MAX)}</span>
+            <span>{money(AMOUNT_MIN)}</span>
+            <span>{money(AMOUNT_MAX)}</span>
           </div>
 
           <div className="calc-row calc-row-2">
@@ -130,7 +133,7 @@ export default function Calculator() {
                   <span>
                     {t("Return in")} {months} {t(months === 1 ? "month" : "months")}
                   </span>
-                  <b>{usd(q.total)}</b>
+                  <b>{money(q.total)}</b>
                 </div>
                 <div className="sched-line muted">
                   <span>{t("First payment date")}</span>
@@ -139,21 +142,21 @@ export default function Calculator() {
                 <hr />
                 <div className="sched-line faint">
                   <span>{t("Loan Principal Amount")}</span>
-                  <span>{usd(q.principal)}</span>
+                  <span>{money(q.principal)}</span>
                 </div>
                 <div className="sched-line faint">
                   <span>{t("Total Interest Charges")}</span>
-                  <span>{usd(q.interest)}</span>
+                  <span>{money(q.interest)}</span>
                 </div>
                 <div className="sched-line strong fees">
                   <span>{t("Service Fees & Commissions")}</span>
-                  <b>{usd(q.fees)}</b>
+                  <b>{money(q.fees)}</b>
                 </div>
                 <div className="sched-monthly">
                   <div className="sched-monthly-head">
                     <span>{t("Standard monthly payment")}</span>
                     <span>
-                      <b>{usd(q.monthly, true)}</b>{" "}
+                      <b>{money(q.monthly, true)}</b>{" "}
                       <em>( {q.ratePerMonth.toFixed(2).replace(".", ",")}% {t("per month")} )</em>
                     </span>
                   </div>
@@ -161,7 +164,7 @@ export default function Calculator() {
                     {q.schedule.map((r, i) => (
                       <div className="sched-item" key={i}>
                         <span>{ddmmyyyy(r.date)}</span>
-                        <span>{usd(r.amount, true)}</span>
+                        <span>{money(r.amount, true)}</span>
                       </div>
                     ))}
                   </div>
@@ -170,21 +173,23 @@ export default function Calculator() {
             </div>
           </div>
 
+          <AmortChart q={q} />
+
           <div className="total">
             <div className="total-main">
               <span>{t("Total amount")}</span>
               <i />
-              <span>{usd(amount)} USD</span>
+              <span>{money(amount)} {currency}</span>
             </div>
             <div className="total-line">
               <span>{t("Loan repayment amount")}</span>
               <i />
-              <span>{usd(q.total)}</span>
+              <span>{money(q.total)}</span>
             </div>
             <div className="total-line">
               <span>{t("Total Interest")}</span>
               <i />
-              <span>{usd(q.interest)}</span>
+              <span>{money(q.interest)}</span>
             </div>
             <div className="total-line">
               <span>{t("Loan term")}</span>
@@ -196,9 +201,30 @@ export default function Calculator() {
           </div>
 
           <div className="calc-actions">
-            <button className="inline-link calc-examples" onClick={() => open({ type: "info", key: "examples" })}>
-              {t("Calculation examples")}
-            </button>
+            <div className="calc-links">
+              <button className="inline-link calc-examples" onClick={() => open({ type: "info", key: "examples" })}>
+                {t("Calculation examples")}
+              </button>
+              <button
+                className="inline-link calc-pdf"
+                disabled={pdfBusy}
+                onClick={async () => {
+                  setPdfBusy(true);
+                  const ok = await downloadStatement({
+                    principal: amount,
+                    months,
+                    discount: code?.discount ?? 0,
+                    currency,
+                    name: user?.name,
+                    email: user?.email,
+                  });
+                  setPdfBusy(false);
+                  toast(ok ? t("Statement downloaded.") : t("Couldn’t create the PDF. Please try again."));
+                }}
+              >
+                {pdfBusy ? <LoaderCircle className="spin-sm" strokeWidth={1.6} /> : <FileDown strokeWidth={1.5} />} {t("Download PDF statement")}
+              </button>
+            </div>
             <div className="promo">
               <input
                 value={promo}

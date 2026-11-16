@@ -3,15 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import confetti from "canvas-confetti";
-import { ArrowLeft, Check, ChevronDown, CreditCard, LoaderCircle, Lock, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, CreditCard, FileDown, Landmark, LoaderCircle, Lock, X, Zap } from "lucide-react";
 import { PLANS } from "@/lib/content";
-import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, PROMO_CODES, TERM_MAX, TERM_MIN, addMonths, clamp, ddmmyyyy, quote, usd } from "@/lib/finance";
+import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, PROMO_CODES, TERM_MAX, TERM_MIN, addMonths, clamp, ddmmyyyy, quote, toUsd } from "@/lib/finance";
 import { cardBrand, cardDigits, cardPreview, cardValid, expValid, fmtCard, fmtExp } from "@/lib/cards";
 import { EASE } from "@/lib/motion";
-import { ApplyPreset, Loan, isEmail, scrollToId, useStore, veloxCard } from "@/lib/store";
+import { ApplyPreset, Loan, Signature, isEmail, scrollToId, useStore, veloxCard } from "@/lib/store";
+import { downloadStatement } from "@/lib/download";
 import { VCardFace } from "./AuthTransition";
 import Celebration from "./Celebration";
-import { Field } from "./ModalParts";
+import { BankLink, Field, LinkedAccount, SignaturePad, signatureValid } from "./ModalParts";
 
 /* ---------- shared bits ---------- */
 
@@ -103,6 +104,7 @@ function StepTabs({ steps, step, onPick }: { steps: string[]; step: number; onPi
 
 /** Rolling number used for the big figures on the visual side. */
 function Figure({ value, cents }: { value: number; cents?: boolean }) {
+  const { money } = useStore();
   return (
     <span className="lm-fig-val">
       <AnimatePresence mode="popLayout" initial={false}>
@@ -113,7 +115,7 @@ function Figure({ value, cents }: { value: number; cents?: boolean }) {
           exit={{ y: "-60%", opacity: 0, filter: "blur(4px)" }}
           transition={{ duration: 0.28, ease: EASE }}
         >
-          {usd(value, cents)}
+          {money(value, cents)}
         </motion.span>
       </AnimatePresence>
     </span>
@@ -121,20 +123,25 @@ function Figure({ value, cents }: { value: number; cents?: boolean }) {
 }
 
 /** Choice between the customer's own Velox card and any other bank card. */
+type Payout = "velox" | "card" | "bank";
+
 function CardChoice({
   value,
   onChange,
   last4,
   otherLabel,
+  bank,
 }: {
-  value: "velox" | "card";
-  onChange: (v: "velox" | "card") => void;
+  value: Payout;
+  onChange: (v: Payout) => void;
   last4: string;
   otherLabel: string;
+  /** Adds a third "linked bank account" option. */
+  bank?: { label: string; sub: string };
 }) {
   const { t } = useStore();
   return (
-    <div className="lm-choice" role="radiogroup">
+    <div className={`lm-choice ${bank ? "is-3" : ""}`} role="radiogroup">
       <button type="button" role="radio" aria-checked={value === "velox"} className={value === "velox" ? "is-active" : ""} onClick={() => onChange("velox")}>
         <span className="lm-mini-card is-velox" aria-hidden />
         <span>
@@ -153,6 +160,18 @@ function CardChoice({
         </span>
         <i className="lm-radio" />
       </button>
+      {bank && (
+        <button type="button" role="radio" aria-checked={value === "bank"} className={value === "bank" ? "is-active" : ""} onClick={() => onChange("bank")}>
+          <span className="lm-mini-card is-bank" aria-hidden>
+            <Landmark strokeWidth={1.4} />
+          </span>
+          <span>
+            <b>{bank.label}</b>
+            <small>{bank.sub}</small>
+          </span>
+          <i className="lm-radio" />
+        </button>
+      )}
     </div>
   );
 }
@@ -162,7 +181,10 @@ function CardChoice({
 type Phase = "form" | "processing" | "done";
 
 export function ApplyModal({ preset }: { preset: ApplyPreset }) {
-  const { t, close, addLoan, open, user } = useStore();
+  const { t, close, addLoan, open, user, money, currency, toast, loans } = useStore();
+  // a signed-in customer always borrows as themselves; guests start from their last application
+  const prev = loans[0];
+  const locked = !!user;
   const vc = veloxCard(user?.id);
   const [step, setStep] = useState(0);
   const [planName, setPlanName] = useState(preset.plan ?? "");
@@ -172,8 +194,23 @@ export function ApplyModal({ preset }: { preset: ApplyPreset }) {
   const [months, setMonths] = useState(clamp(preset.months ?? 12, TERM_MIN, lim.term));
   const [purpose, setPurpose] = useState(PURPOSES[0]);
   const promo = preset.promo && PROMO_CODES[preset.promo] ? preset.promo : "";
-  const [f, setF] = useState({ name: user?.name ?? "", email: user?.email ?? "", phone: "", dob: "", idn: "", tax: "", card: "" });
-  const [payout, setPayout] = useState<"velox" | "card">("velox");
+  const [f, setF] = useState({
+    name: user?.name ?? prev?.name ?? "",
+    email: user?.email ?? prev?.email ?? "",
+    phone: "",
+    dob: "",
+    idn: "",
+    tax: "",
+    card: "",
+  });
+  useEffect(() => {
+    if (user) setF((x) => ({ ...x, name: user.name, email: user.email }));
+  }, [user]);
+  const [payout, setPayout] = useState<Payout>("velox");
+  const [acct, setAcct] = useState<LinkedAccount | null>(null);
+  const [linking, setLinking] = useState(false);
+  const [signature, setSignature] = useState<Signature | null>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [agree, setAgree] = useState(false);
   const [err, setErr] = useState<Record<string, string>>({});
   const [phase, setPhase] = useState<Phase>("form");
@@ -188,8 +225,13 @@ export function ApplyModal({ preset }: { preset: ApplyPreset }) {
 
   const q = useMemo(() => quote(amount, months, PROMO_CODES[promo]?.discount ?? 0), [amount, months, promo]);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF((x) => ({ ...x, [k]: e.target.value }));
-  const card4 = payout === "velox" ? vc.last4 : cardDigits(f.card).slice(-4);
-  const payoutLabel = payout === "velox" ? `${t("Velox card")} •••• ${vc.last4}` : `${t("Bank card")} •••• ${card4}`;
+  const card4 = payout === "velox" ? vc.last4 : payout === "bank" ? acct?.mask ?? "" : cardDigits(f.card).slice(-4);
+  const payoutLabel =
+    payout === "velox"
+      ? `${t("Velox card")} •••• ${vc.last4}`
+      : payout === "bank"
+        ? `${acct?.bank ?? t("Bank account")} •••• ${card4}`
+        : `${t("Bank card")} •••• ${card4}`;
 
   const CHECKS = [t("Verifying your identity"), t("Running a soft credit check"), `${t("Preparing payout to")} •••• ${card4}`];
 
@@ -214,6 +256,9 @@ export function ApplyModal({ preset }: { preset: ApplyPreset }) {
           payout,
           card4,
           purpose,
+          bank: payout === "bank" ? acct?.bank : undefined,
+          feeDiscount: PROMO_CODES[promo]?.discount ?? 0,
+          signature: signature ?? undefined,
         });
         setLoan(l);
         setPhase("done");
@@ -226,7 +271,7 @@ export function ApplyModal({ preset }: { preset: ApplyPreset }) {
   const validate = () => {
     const e: Record<string, string> = {};
     if (step === 1) {
-      if (f.name.trim().split(/\s+/).length < 2) e.name = t("Enter your first and last name");
+      if (!locked && f.name.trim().split(/\s+/).length < 2) e.name = t("Enter your first and last name");
       if (!isEmail(f.email)) e.email = t("Please enter a valid e-mail");
       if (f.phone.replace(/\D/g, "").length < 7) e.phone = t("Please enter a full phone number");
       const age = ageOf(f.dob);
@@ -237,6 +282,10 @@ export function ApplyModal({ preset }: { preset: ApplyPreset }) {
     }
     if (step === 2) {
       if (payout === "card" && !cardValid(f.card)) e.card = t("Card number should have 16 digits");
+      if (payout === "bank" && !acct) e.bank = t("Link a bank account to continue");
+    }
+    if (step === 3) {
+      if (!signatureValid(signature)) e.sig = t("Please sign the agreement");
       if (!agree) e.agree = t("Please accept the terms to continue");
     }
     setErr(e);
@@ -245,7 +294,7 @@ export function ApplyModal({ preset }: { preset: ApplyPreset }) {
 
   const next = () => {
     if (!validate()) return;
-    if (step < 2) return setStep(step + 1);
+    if (step < 3) return setStep(step + 1);
     setCheck(0);
     setPhase("processing");
   };
@@ -253,7 +302,7 @@ export function ApplyModal({ preset }: { preset: ApplyPreset }) {
   if (phase === "done" && loan)
     return <Celebration loan={loan} onClose={close} onAccount={() => open({ type: "account" })} />;
 
-  const steps = [t("Loan"), t("About you"), t("Payout")];
+  const steps = [t("Loan"), t("About you"), t("Payout"), t("Sign")];
   const processing = phase === "processing";
 
   const visual = (
@@ -275,7 +324,16 @@ export function ApplyModal({ preset }: { preset: ApplyPreset }) {
             transition={{ duration: 0.32, ease: EASE }}
             style={{ transformPerspective: 1000 }}
           >
-            {payout === "velox" ? (
+            {payout === "bank" ? (
+              <VCardFace
+                holder={f.name}
+                caret={nameFocus}
+                placeholder={t("YOUR NAME")}
+                number={acct ? `ACCT  ••••  ••••  ${acct.mask}` : "ACCT  ••••  ••••  ••••"}
+                tag="ach"
+                variant="ext"
+              />
+            ) : payout === "velox" ? (
               <VCardFace
                 holder={f.name}
                 caret={nameFocus}
@@ -294,18 +352,18 @@ export function ApplyModal({ preset }: { preset: ApplyPreset }) {
         <span className="lm-fig-label">{t("You receive")}</span>
         <Figure value={amount} />
         <span className="lm-fig-sub">
-          {months} {t(months === 1 ? "month" : "months")} · {usd(q.monthly, true)} {t("per month")}
+          {months} {t(months === 1 ? "month" : "months")} · {money(q.monthly, true)} {t("per month")}
         </span>
       </div>
 
       <dl className="lm-facts">
         <div>
           <dt>{t("Total to repay")}</dt>
-          <dd>{usd(q.total)}</dd>
+          <dd>{money(q.total)}</dd>
         </div>
         <div>
           <dt>{t("Fees")}</dt>
-          <dd>{usd(q.fees)}</dd>
+          <dd>{money(q.fees)}</dd>
         </div>
         <div>
           <dt>{t("First payment")}</dt>
@@ -317,6 +375,25 @@ export function ApplyModal({ preset }: { preset: ApplyPreset }) {
 
   return (
     <LoanShell label={t("Loan application")} visual={visual} onClose={close} busy={processing}>
+      <AnimatePresence>
+        {linking && (
+          <BankLink
+            t={t}
+            money={money}
+            onCancel={() => {
+              setLinking(false);
+              if (!acct) setPayout("velox");
+            }}
+            onLinked={(a) => {
+              setAcct(a);
+              setPayout("bank");
+              setLinking(false);
+              setErr({});
+              toast(`${a.bank} ${t("linked")} ✓`);
+            }}
+          />
+        )}
+      </AnimatePresence>
       {processing ? (
         <div className="lm-proc" aria-live="polite">
           <p className="lm-kicker">{t("Application submitted")}</p>
@@ -343,7 +420,13 @@ export function ApplyModal({ preset }: { preset: ApplyPreset }) {
         <>
           <p className="lm-kicker">{t("Loan application")}</p>
           <h2 className="lm-title">
-            {step === 0 ? t("Choose your loan") : step === 1 ? t("Tell us about you") : t("Where should we send it?")}
+            {step === 0
+              ? t("Choose your loan")
+              : step === 1
+                ? t("Tell us about you")
+                : step === 2
+                  ? t("Where should we send it?")
+                  : t("Review & sign")}
           </h2>
           <StepTabs steps={steps} step={step} onPick={(i) => (setErr({}), setStep(i))} />
 
@@ -357,14 +440,14 @@ export function ApplyModal({ preset }: { preset: ApplyPreset }) {
                         <option value="">{t("Custom (calculator)")}</option>
                         {PLANS.map((p) => (
                           <option key={p.id} value={p.name}>
-                            {t(p.name)} · {usd(p.min)}–{usd(p.max)} · {t("up to")} {p.term} {t("mo")}
+                            {t(p.name)} · {money(p.min)}–{money(p.max)} · {t("up to")} {p.term} {t("mo")}
                           </option>
                         ))}
                       </select>
                       <ChevronDown strokeWidth={1.3} />
                     </div>
                   </Field>
-                  <Field label={t("Amount")} hint={`${usd(lim.min)} – ${usd(lim.max)}`} className="span2">
+                  <Field label={t("Amount")} hint={`${money(lim.min)} – ${money(lim.max)}`} className="span2">
                     <div className="mrange">
                       <input
                         type="range"
@@ -376,7 +459,7 @@ export function ApplyModal({ preset }: { preset: ApplyPreset }) {
                         style={{ "--p": `${((amount - lim.min) / (lim.max - lim.min)) * 100}%` } as React.CSSProperties}
                         onChange={(e) => setAmount(Number(e.target.value))}
                       />
-                      <b>{usd(amount)}</b>
+                      <b>{money(amount)}</b>
                     </div>
                   </Field>
                   <Field label={t("Term")} hint={`1 – ${lim.term} ${t("months")}`} className="span2">
@@ -417,9 +500,16 @@ export function ApplyModal({ preset }: { preset: ApplyPreset }) {
 
               {step === 1 && (
                 <div className="mgrid">
-                  <Field label={t("Full name")} error={err.name}>
+                  {locked && (
+                    <p className="lm-account-note span2">
+                      <Lock strokeWidth={1.5} /> {t("Applying as")} <b>{user!.name}</b> · {t("name and e-mail come from your account, so this loan, your card and your dashboard always match.")}
+                    </p>
+                  )}
+                  <Field label={t("Full name")} error={err.name} hint={locked ? <Lock strokeWidth={1.6} aria-label={t("From your account")} /> : undefined}>
                     <input
                       value={f.name}
+                      readOnly={locked}
+                      title={locked ? t("From your account") : undefined}
                       onChange={set("name")}
                       onFocus={() => setNameFocus(true)}
                       onBlur={() => setNameFocus(false)}
@@ -428,8 +518,16 @@ export function ApplyModal({ preset }: { preset: ApplyPreset }) {
                       maxLength={40}
                     />
                   </Field>
-                  <Field label={t("E-mail")} error={err.email}>
-                    <input value={f.email} onChange={set("email")} type="email" autoComplete="email" placeholder="you@example.com" />
+                  <Field label={t("E-mail")} error={err.email} hint={locked ? <Lock strokeWidth={1.6} aria-label={t("From your account")} /> : undefined}>
+                    <input
+                      value={f.email}
+                      readOnly={locked}
+                      title={locked ? t("From your account") : undefined}
+                      onChange={set("email")}
+                      type="email"
+                      autoComplete="email"
+                      placeholder="you@example.com"
+                    />
                   </Field>
                   <Field label={t("Phone")} error={err.phone}>
                     <input value={f.phone} onChange={set("phone")} inputMode="tel" autoComplete="tel" placeholder="+1 (555) 000-0000" />
@@ -448,7 +546,56 @@ export function ApplyModal({ preset }: { preset: ApplyPreset }) {
 
               {step === 2 && (
                 <div>
-                  <CardChoice value={payout} onChange={(v) => (setErr({}), setPayout(v))} last4={vc.last4} otherLabel={t("Another bank card")} />
+                  <CardChoice
+                    value={payout}
+                    onChange={(v) => {
+                      setErr({});
+                      setPayout(v);
+                      if (v === "bank" && !acct) setLinking(true);
+                    }}
+                    last4={vc.last4}
+                    otherLabel={t("Another bank card")}
+                    bank={{ label: t("Bank account"), sub: acct ? `${acct.bank} •••• ${acct.mask}` : t("Link instantly") }}
+                  />
+                  <AnimatePresence initial={false}>
+                    {payout === "bank" && (
+                      <motion.div
+                        className="lm-collapse"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.35, ease: EASE }}
+                      >
+                        {acct ? (
+                          <div className="bl-linked">
+                            <span className="bl-logo">
+                              <Landmark strokeWidth={1.5} />
+                            </span>
+                            <span>
+                              <b>
+                                {acct.bank} · {t(acct.type)} •••• {acct.mask}
+                              </b>
+                              <small>
+                                <Check strokeWidth={2.2} /> {t("Verified instantly")} · {t("Balance")} {money(acct.balance, true)}
+                              </small>
+                            </span>
+                            <button type="button" className="inline-link" onClick={() => setLinking(true)}>
+                              {t("Change")}
+                            </button>
+                          </div>
+                        ) : (
+                          <button type="button" className="bl-start" onClick={() => setLinking(true)}>
+                            <Zap strokeWidth={1.6} />
+                            <span>
+                              <b>{t("Link your bank instantly")}</b>
+                              <small>{t("Secure, read-only connection · takes about 10 seconds")}</small>
+                            </span>
+                          </button>
+                        )}
+                        {err.bank && <p className="field-error static">{err.bank}</p>}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                   <AnimatePresence initial={false}>
                     {payout === "card" && (
                       <motion.div
@@ -490,9 +637,78 @@ export function ApplyModal({ preset }: { preset: ApplyPreset }) {
                       <b>{payout === "card" && cardDigits(f.card).length < 4 ? "—" : payoutLabel}</b>
                     </div>
                   </div>
+                </div>
+              )}
 
+              {step === 3 && (
+                <div>
+                  <div className="lm-review">
+                    <div>
+                      <span>{t("You receive")}</span>
+                      <b>{money(amount)}</b>
+                    </div>
+                    <div>
+                      <span>{t("Monthly")}</span>
+                      <b>
+                        {money(q.monthly, true)} × {months}
+                      </b>
+                    </div>
+                    <div>
+                      <span>{t("Total to repay")}</span>
+                      <b>{money(q.total)}</b>
+                    </div>
+                    <div>
+                      <span>{t("Payout to")}</span>
+                      <b>{payoutLabel}</b>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="inline-link lm-pdf"
+                    disabled={pdfBusy}
+                    onClick={async () => {
+                      setPdfBusy(true);
+                      const ok = await downloadStatement({
+                        principal: amount,
+                        months,
+                        discount: PROMO_CODES[promo]?.discount ?? 0,
+                        currency,
+                        name: f.name.trim(),
+                        email: f.email.trim(),
+                        purpose,
+                        payoutTo: payoutLabel,
+                        signature: signatureValid(signature) ? signature! : undefined,
+                        signedAt: signatureValid(signature) ? new Date().toISOString() : undefined,
+                      });
+                      setPdfBusy(false);
+                      if (!ok) toast(t("Couldn’t create the PDF. Please try again."));
+                    }}
+                  >
+                    {pdfBusy ? <LoaderCircle className="spin-sm" strokeWidth={1.6} /> : <FileDown strokeWidth={1.5} />} {t("Preview loan agreement (PDF)")}
+                  </button>
+                  <SignaturePad
+                    value={signature}
+                    onChange={(sg) => {
+                      setSignature(sg);
+                      if (err.sig && signatureValid(sg)) setErr((x) => ({ ...x, sig: "" }));
+                    }}
+                    name={f.name.trim()}
+                    error={err.sig || undefined}
+                    labels={{
+                      draw: t("Draw"),
+                      type: t("Type"),
+                      here: t("Sign here with your mouse or finger"),
+                      clear: t("Clear"),
+                      undo: t("Undo"),
+                      typed: t("Type your full name"),
+                      signedAs: t("Signing as"),
+                    }}
+                  />
                   <label className={`check ${err.agree ? "has-error" : ""}`}>
-                    <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
+                    <input type="checkbox" checked={agree} onChange={(e) => {
+                        setAgree(e.target.checked);
+                        if (e.target.checked) setErr((x) => ({ ...x, agree: "" }));
+                      }} />
                     <span className="check-box">
                       <Check strokeWidth={2.2} />
                     </span>
@@ -521,7 +737,7 @@ export function ApplyModal({ preset }: { preset: ApplyPreset }) {
               </span>
             )}
             <button className="btn btn-primary" onClick={next}>
-              {step < 2 ? t("Continue") : `${t("Get")} ${usd(amount)}`}
+              {step < 3 ? t("Continue") : `${t("Sign & get")} ${money(amount)}`}
             </button>
           </div>
         </>
@@ -560,7 +776,7 @@ function Ring({ p }: { p: number }) {
 }
 
 export function PayModal({ loanId }: { loanId?: string }) {
-  const { t, close, loans, pay, open, user } = useStore();
+  const { t, close, loans, pay, open, user, money, currency } = useStore();
   const vc = veloxCard(user?.id);
   const active = loans.filter((l) => l.status === "active");
   const [id, setId] = useState(loanId && active.some((l) => l.id === loanId) ? loanId : active[0]?.id ?? "");
@@ -577,7 +793,7 @@ export function PayModal({ loanId }: { loanId?: string }) {
   const [phase, setPhase] = useState<Phase>("form");
   const [result, setResult] = useState<{ amount: number; loan: Loan } | null>(null);
 
-  const amount = !loan ? 0 : mode === "full" ? left : mode === "monthly" ? Math.min(loan.monthly, left) : Number(custom.replace(/,/g, "")) || 0;
+  const amount = !loan ? 0 : mode === "full" ? left : mode === "monthly" ? Math.min(loan.monthly, left) : toUsd(Number(custom.replace(/,/g, "")) || 0, currency);
 
   // celebrate a fully repaid loan
   useEffect(() => {
@@ -631,7 +847,7 @@ export function PayModal({ loanId }: { loanId?: string }) {
   const submit = () => {
     const e: Record<string, string> = {};
     if (!loan) e.loan = t("Choose a loan");
-    if (amount < 1 || amount > left + 0.001) e.amount = `${t("Enter an amount between")} $1 ${t("and")} ${usd(left, true)}`;
+    if (amount < 1 || amount > left + 0.001) e.amount = `${t("Enter an amount between")} ${money(toUsd(1, currency), true)} ${t("and")} ${money(left, true)}`;
     if (method === "card") {
       if (!cardValid(card)) e.card = t("Card number should have 16 digits");
       if (!expValid(exp)) e.exp = t("Invalid date");
@@ -642,7 +858,7 @@ export function PayModal({ loanId }: { loanId?: string }) {
     setPhase("processing");
     const amt = Math.round(Math.min(amount, left) * 100) / 100;
     setTimeout(() => {
-      const updated = pay(loan.id, amt);
+      const updated = pay(loan.id, amt, method, method === "card" ? cardDigits(card).slice(-4) : undefined);
       if (updated) setResult({ amount: amt, loan: updated });
       setPhase("done");
     }, 1400);
@@ -670,7 +886,7 @@ export function PayModal({ loanId }: { loanId?: string }) {
         </div>
         <div>
           <dt>{t("Monthly")}</dt>
-          <dd>{usd(shown.monthly, true)}</dd>
+          <dd>{money(shown.monthly, true)}</dd>
         </div>
         <div>
           <dt>{shown.status === "closed" ? t("Closed") : t("Next payment")}</dt>
@@ -687,7 +903,7 @@ export function PayModal({ loanId }: { loanId?: string }) {
           <LoaderCircle className="spin" strokeWidth={1.2} />
           <h2 className="lm-title">{t("Processing payment…")}</h2>
           <p className="small-muted">
-            {usd(amount, true)} · {method === "velox" ? `${t("Velox card")} •••• ${vc.last4}` : `•••• ${cardDigits(card).slice(-4)}`}
+            {money(amount, true)} · {method === "velox" ? `${t("Velox card")} •••• ${vc.last4}` : `•••• ${cardDigits(card).slice(-4)}`}
           </p>
         </div>
       )}
@@ -707,17 +923,17 @@ export function PayModal({ loanId }: { loanId?: string }) {
               <p className="lm-kicker">{result.loan.id}</p>
               <h2 className="lm-title">{t("Loan fully repaid")}</h2>
               <p className="small-muted lm-lead">
-                {t("Congratulations! You paid back")} {usd(result.loan.total, true)} {t("in")} {result.loan.payments.length}{" "}
+                {t("Congratulations! You paid back")} {money(result.loan.total, true)} {t("in")} {result.loan.payments.length}{" "}
                 {t(result.loan.payments.length === 1 ? "payment" : "payments")}. {t("Your loan is now closed — nothing more to pay.")}
               </p>
               <div className="lm-review one">
                 <div>
                   <span>{t("Borrowed")}</span>
-                  <b>{usd(result.loan.principal)}</b>
+                  <b>{money(result.loan.principal)}</b>
                 </div>
                 <div>
                   <span>{t("Total repaid")}</span>
-                  <b>{usd(result.loan.total, true)}</b>
+                  <b>{money(result.loan.total, true)}</b>
                 </div>
                 <div>
                   <span>{t("Closed on")}</span>
@@ -737,14 +953,14 @@ export function PayModal({ loanId }: { loanId?: string }) {
             <>
               <h2 className="lm-title">{t("Payment successful")}</h2>
               <p className="small-muted lm-lead">
-                {usd(result.amount, true)} {t("paid toward")} {result.loan.id}. {t("Remaining balance")}:{" "}
-                <b className="lm-white">{usd(result.loan.total - result.loan.paid, true)}</b>
+                {money(result.amount, true)} {t("paid toward")} {result.loan.id}. {t("Remaining balance")}:{" "}
+                <b className="lm-white">{money(result.loan.total - result.loan.paid, true)}</b>
               </p>
               <div className="lm-review one">
                 <div>
                   <span>{t("Next payment")}</span>
                   <b>
-                    {usd(Math.min(result.loan.monthly, result.loan.total - result.loan.paid), true)} · {ddmmyyyy(nextDue(result.loan))}
+                    {money(Math.min(result.loan.monthly, result.loan.total - result.loan.paid), true)} · {ddmmyyyy(nextDue(result.loan))}
                   </b>
                 </div>
               </div>
@@ -773,7 +989,7 @@ export function PayModal({ loanId }: { loanId?: string }) {
                     <b>{l.id}</b> · {t(l.plan)}
                   </span>
                   <span>
-                    {t("Left")}: {usd(l.total - l.paid, true)}
+                    {t("Left")}: {money(l.total - l.paid, true)}
                   </span>
                 </button>
               ))}
@@ -790,8 +1006,8 @@ export function PayModal({ loanId }: { loanId?: string }) {
                 />
                 {(
                   [
-                    ["monthly", t("Monthly"), usd(Math.min(loan.monthly, left), true)],
-                    ["full", t("Pay off"), usd(left, true)],
+                    ["monthly", t("Monthly"), money(Math.min(loan.monthly, left), true)],
+                    ["full", t("Pay off"), money(left, true)],
                     ["custom", t("Other"), t("amount")],
                   ] as const
                 ).map(([k, l, s]) => (
@@ -804,7 +1020,7 @@ export function PayModal({ loanId }: { loanId?: string }) {
               <AnimatePresence initial={false}>
                 {mode === "custom" && (
                   <motion.div className="lm-collapse" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3, ease: EASE }}>
-                    <Field label={t("Amount, USD")} error={err.amount}>
+                    <Field label={`${t("Amount")}, ${currency}`} error={err.amount}>
                       <input value={custom} onChange={(e) => setCustom(e.target.value.replace(/[^\d.,]/g, ""))} inputMode="decimal" placeholder="500" autoFocus />
                     </Field>
                   </motion.div>
@@ -813,7 +1029,7 @@ export function PayModal({ loanId }: { loanId?: string }) {
               {err.amount && mode !== "custom" && <p className="field-error static">{err.amount}</p>}
 
               <span className="mfield-label lm-label">{t("Pay with")}</span>
-              <CardChoice value={method} onChange={(v) => (setErr({}), setMethod(v))} last4={vc.last4} otherLabel={t("Another card")} />
+              <CardChoice value={method} onChange={(v) => (setErr({}), setMethod(v === "card" ? "card" : "velox"))} last4={vc.last4} otherLabel={t("Another card")} />
               <AnimatePresence initial={false}>
                 {method === "card" && (
                   <motion.div className="lm-collapse" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.35, ease: EASE }}>
@@ -838,7 +1054,7 @@ export function PayModal({ loanId }: { loanId?: string }) {
               <Lock strokeWidth={1.4} /> {t("Early repayment is always free.")}
             </span>
             <button className="btn btn-primary" onClick={submit}>
-              {t("Pay")} {amount > 0 ? usd(Math.min(amount, left), true) : ""}
+              {t("Pay")} {amount > 0 ? money(Math.min(amount, left), true) : ""}
             </button>
           </div>
         </>

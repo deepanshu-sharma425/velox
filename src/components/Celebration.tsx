@@ -5,9 +5,9 @@ import { animate, motion, useMotionValue, useTransform } from "framer-motion";
 import confetti from "canvas-confetti";
 import { Check } from "lucide-react";
 import { EASE } from "@/lib/motion";
-import { addMonths, ddmmyyyy, usd } from "@/lib/finance";
+import { addMonths, ddmmyyyy } from "@/lib/finance";
 import type { Loan } from "@/lib/store";
-import { useStore } from "@/lib/store";
+import { payoutText, useStore } from "@/lib/store";
 
 const BILLS = 7;
 const FLYERS = 16;
@@ -37,12 +37,12 @@ export default function Celebration({
   onClose: () => void;
   onAccount: () => void;
 }) {
-  const { t } = useStore();
+  const { t, money } = useStore();
   const firstPayment = addMonths(new Date(loan.createdAt), 1);
-  const dest = `${loan.payout === "card" ? t("bank card") : t("Velox card")} •••• ${loan.card4 ?? ""}`;
+  const dest = payoutText(loan, t);
   const [stage, setStage] = useState(0); // 0 zoom-in, 1 band snaps + fan, 2 burst, 3 text
   const amount = useMotionValue(0);
-  const amountText = useTransform(amount, (v) => usd(Math.round(v)));
+  const amountText = useTransform(amount, (v) => money(Math.round(v)));
 
   const flyers = useMemo(
     () =>
@@ -206,7 +206,7 @@ export default function Celebration({
             <motion.div className="celebrate-chips" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7, duration: 0.8, ease: EASE }}>
               <div>
                 <span>{t("Monthly payment")}</span>
-                <b>{usd(loan.monthly, true)}</b>
+                <b>{money(loan.monthly, true)}</b>
               </div>
               <div>
                 <span>{t("First payment date")}</span>
@@ -220,7 +220,7 @@ export default function Celebration({
               </div>
               <div>
                 <span>{t("Total to repay")}</span>
-                <b>{usd(loan.total)}</b>
+                <b>{money(loan.total)}</b>
               </div>
             </motion.div>
             <motion.div className="celebrate-actions" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.9, duration: 0.8, ease: EASE }}>

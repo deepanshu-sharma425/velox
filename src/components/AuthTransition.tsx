@@ -5,6 +5,7 @@ import { AnimatePresence, motion, MotionValue } from "framer-motion";
 import { Logo } from "./Icons";
 import { EASE } from "@/lib/motion";
 import { useStore } from "@/lib/store";
+import { FrostShader, FrozenBadge } from "./CardFx";
 
 /** Card-holder line that "prints" letters as they are typed. */
 export function CardHolder({ text, placeholder, caret }: { text: string; placeholder: string; caret?: boolean }) {
@@ -40,6 +41,9 @@ export function VCardFace({
   number = "4821\u00a0\u00a0••••\u00a0\u00a0••••\u00a0\u00a07390",
   tag = "debit",
   variant,
+  expiry,
+  frozen,
+  labels,
 }: {
   holder: string;
   sheen?: MotionValue<string> | string;
@@ -49,9 +53,14 @@ export function VCardFace({
   tag?: string;
   /** "ext" renders a graphite third-party bank card instead of the orange Velox one. */
   variant?: "ext";
+  /** Shows a "Valid thru" column when given. */
+  expiry?: string;
+  /** Ices the card over with the frost shader. */
+  frozen?: boolean;
+  labels?: { holder?: string; valid?: string; frozen?: string };
 }) {
   return (
-    <div className={`vcard-face ${variant === "ext" ? "is-ext" : ""}`}>
+    <div className={`vcard-face ${variant === "ext" ? "is-ext" : ""} ${frozen ? "is-frozen" : ""}`}>
       <div className="vcard-flutes" />
       {sheen && <motion.div className="vcard-sheen" style={{ background: sheen }} />}
       <div className="vcard-top">
@@ -68,11 +77,23 @@ export function VCardFace({
       <div className="vcard-num">{number}</div>
       <div className="vcard-bottom">
         <div>
-          <span>Card holder</span>
+          <span>{labels?.holder ?? "Card holder"}</span>
           <CardHolder text={holder} placeholder={placeholder} caret={caret} />
         </div>
+        {expiry && (
+          <div>
+            <span>{labels?.valid ?? "Valid thru"}</span>
+            <b>{expiry}</b>
+          </div>
+        )}
         <em>{tag}</em>
       </div>
+      {frozen !== undefined && (
+        <>
+          <FrostShader frozen={frozen} />
+          <FrozenBadge frozen={frozen} label={labels?.frozen ?? "Frozen"} />
+        </>
+      )}
     </div>
   );
 }

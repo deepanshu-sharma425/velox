@@ -7,11 +7,10 @@ import { cardReveal, reveal } from "@/lib/motion";
 import { useTilt } from "@/lib/useTilt";
 import SplitHeading from "./SplitHeading";
 import { PLANS, Plan } from "@/lib/content";
-import { usd } from "@/lib/finance";
 import { useStore } from "@/lib/store";
 
 function PlanCard({ p, i, active, onPick }: { p: Plan; i: number; active: boolean; onPick: () => void }) {
-  const { t, open } = useStore();
+  const { t, open, money } = useStore();
   const tilt = useTilt(5);
   const preset = { plan: p.name, amount: Math.round((p.min + p.max) / 2 / 500) * 500, months: p.term };
   return (
@@ -42,7 +41,7 @@ function PlanCard({ p, i, active, onPick }: { p: Plan; i: number; active: boolea
             <Wallet strokeWidth={1.2} /> {t("Loan amount")}
           </dt>
           <dd>
-            {usd(p.min)} - {usd(p.max)}
+            {money(p.min)} - {money(p.max)}
           </dd>
         </div>
         <div>

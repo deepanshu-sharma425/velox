@@ -7,6 +7,7 @@ import { EASE } from "@/lib/motion";
 import { IconUser, Logo } from "./Icons";
 import LiquidNav, { LiquidFilter } from "./LiquidNav";
 import { LANGS, scrollToId, useStore } from "@/lib/store";
+import { CURRENCIES, FX } from "@/lib/finance";
 
 export const NAV = [
   { id: "home", label: "Home" },
@@ -79,19 +80,24 @@ export function MobileTabBar() {
   );
 }
 
-export default function Header() {
-  const { open, t, lang, setLang, loans, user } = useStore();
-  const [active, setActive] = useState("home");
+/**
+ * Site header. The dashboard passes its own section list (`nav`) and a `homeHref`
+ * so the logo leads back to the landing page.
+ */
+export default function Header({ nav = NAV, homeHref }: { nav?: { id: string; label: string }[]; homeHref?: string } = {}) {
+  const { open, t, lang, setLang, loans, user, currency, setCurrency } = useStore();
+  const [active, setActive] = useState(nav[0].id);
   const [floating, setFloating] = useState(false);
   const [shown, setShown] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
+  const [curOpen, setCurOpen] = useState(false);
 
   // Scroll spy + reveal-on-scroll-up header
   useEffect(() => {
     let lastY = window.scrollY;
     const onScroll = () => {
       const y = window.scrollY;
-      if (Date.now() > spyLockUntil) setActive(spy(NAV.map((n) => n.id)));
+      if (Date.now() > spyLockUntil) setActive(spy(nav.map((n) => n.id)));
       setFloating(y > 160);
       if (y < 160) setShown(false);
       else if (y < lastY - 4) setShown(true);
@@ -101,14 +107,18 @@ export default function Header() {
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (!langOpen) return;
-    const close = () => setLangOpen(false);
+    if (!langOpen && !curOpen) return;
+    const close = () => {
+      setLangOpen(false);
+      setCurOpen(false);
+    };
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
-  }, [langOpen]);
+  }, [langOpen, curOpen]);
 
   const go = (id: string) => {
     setActive(id);
@@ -124,14 +134,16 @@ export default function Header() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 1, ease: EASE, delay: 0.1 }}
       >
-        <button className="header-burger m-only" aria-label="Open menu" onClick={() => open({ type: "menu" })}>
+        <button className="header-burger m-only" aria-label="Open menu" onClick={() => open({ type: "menu", nav: homeHref ? nav : undefined })}>
           <Menu strokeWidth={1.3} />
         </button>
 
         <a
-          href="#home"
+          href={homeHref ?? "#home"}
           className="header-logo"
+          aria-label={homeHref ? t("Back to site") : undefined}
           onClick={(e) => {
+            if (homeHref) return;
             e.preventDefault();
             go("home");
           }}
@@ -145,13 +157,13 @@ export default function Header() {
           itemClassName="nav-item"
           active={active}
           remeasureKey={lang}
-          items={NAV.map((n) => ({ id: n.id, label: t(n.label) }))}
+          items={nav.map((n) => ({ id: n.id, label: t(n.label) }))}
           onSelect={go}
         />
 
         <div className="header-right">
           <div className="lang d-only" onClick={(e) => e.stopPropagation()}>
-            <button className="lang-btn" onClick={() => setLangOpen((v) => !v)} aria-expanded={langOpen}>
+            <button className="lang-btn" onClick={() => (setCurOpen(false), setLangOpen((v) => !v))} aria-expanded={langOpen}>
               {lang} <ChevronDown strokeWidth={1.3} className={langOpen ? "rot" : ""} />
             </button>
             {langOpen && (
@@ -172,6 +184,39 @@ export default function Header() {
               </div>
             )}
           </div>
+          <div className="lang cur d-only" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="lang-btn"
+              onClick={() => (setLangOpen(false), setCurOpen((v) => !v))}
+              aria-expanded={curOpen}
+              aria-label={`${t("Currency")}: ${currency}`}
+            >
+              <span className="cur-sym">{FX[currency].symbol}</span> {currency} <ChevronDown strokeWidth={1.3} className={curOpen ? "rot" : ""} />
+            </button>
+            {curOpen && (
+              <div className="lang-menu glass" role="menu">
+                {CURRENCIES.map((c) => (
+                  <button
+                    key={c}
+                    role="menuitemradio"
+                    aria-checked={c === currency}
+                    className={c === currency ? "is-active" : ""}
+                    onClick={() => {
+                      setCurrency(c);
+                      setCurOpen(false);
+                    }}
+                  >
+                    {FX[c].symbol} {t(FX[c].name)} <span>{c}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {user && !homeHref && (
+            <a className="dash-link d-only" href="/dashboard">
+              {t("Dashboard")}
+            </a>
+          )}
           <button className="account-btn" onClick={() => open({ type: "account" })}>
             <span className="d-only">{user ? user.name.split(" ")[0] : t("My Account")}</span>
             <span className="account-icon">

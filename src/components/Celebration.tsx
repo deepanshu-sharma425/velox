@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { animate, motion, useMotionValue, useTransform } from "framer-motion";
 import confetti from "canvas-confetti";
 import { Check } from "lucide-react";
@@ -30,16 +30,16 @@ function Bill({ className, style }: { className?: string; style?: React.CSSPrope
 /** Full-screen "loan approved" moment: a money bundle bursts open. */
 export default function Celebration({
   loan,
-  card4,
   onClose,
   onAccount,
 }: {
   loan: Loan;
-  card4: string;
   onClose: () => void;
   onAccount: () => void;
 }) {
   const { t } = useStore();
+  const firstPayment = addMonths(new Date(loan.createdAt), 1);
+  const dest = `${loan.payout === "card" ? t("bank card") : t("Velox card")} •••• ${loan.card4 ?? ""}`;
   const [stage, setStage] = useState(0); // 0 zoom-in, 1 band snaps + fan, 2 burst, 3 text
   const amount = useMotionValue(0);
   const amountText = useTransform(amount, (v) => usd(Math.round(v)));
@@ -60,12 +60,21 @@ export default function Celebration({
     [],
   );
 
+  // the store hands us a fresh `onClose` on every render; keep the intro timers stable
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
+  const skip = () => {
+    setStage(3);
+    animate(amount, loan.principal, { duration: 0.8, ease: [0.16, 1, 0.3, 1] });
+  };
+
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const timers = [
-      setTimeout(() => setStage(1), reduced ? 0 : 950),
+      setTimeout(() => setStage((s) => Math.max(s, 1)), reduced ? 0 : 950),
       setTimeout(() => {
-        setStage(2);
+        setStage((s) => Math.max(s, 2));
         if (!reduced) {
           const colors = ["#ff6a14", "#ffb35c", "#ffe0b0", "#ffffff", "#7fe0a4"];
           confetti({ particleCount: 140, spread: 90, startVelocity: 48, origin: { y: 0.55 }, colors, zIndex: 300, scalar: 1.1 });
@@ -78,16 +87,17 @@ export default function Celebration({
       }, reduced ? 0 : 1350),
       setTimeout(() => {
         setStage(3);
+        if (amount.get() === loan.principal) return;
         animate(amount, loan.principal, { duration: reduced ? 0 : 1.4, ease: [0.16, 1, 0.3, 1] });
       }, reduced ? 0 : 1700),
     ];
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeRef.current();
     window.addEventListener("keydown", onKey);
     return () => {
       timers.forEach(clearTimeout);
       window.removeEventListener("keydown", onKey);
     };
-  }, [amount, loan.principal, onClose]);
+  }, [amount, loan.principal]);
 
   return (
     <motion.div
@@ -98,6 +108,7 @@ export default function Celebration({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.35 }}
+      onClick={() => stage < 3 && skip()}
     >
       <motion.div
         className="celebrate-burst"
@@ -190,7 +201,7 @@ export default function Celebration({
               {amountText}
             </motion.div>
             <motion.p className="celebrate-sub" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5, duration: 0.8 }}>
-              {loan.id} · {t("sent to card")} •••• {card4}
+              {loan.id} · {t("sent to your")} {dest}
             </motion.p>
             <motion.div className="celebrate-chips" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7, duration: 0.8, ease: EASE }}>
               <div>
@@ -199,7 +210,7 @@ export default function Celebration({
               </div>
               <div>
                 <span>{t("First payment date")}</span>
-                <b>{ddmmyyyy(addMonths(new Date(), 1))}</b>
+                <b>{ddmmyyyy(firstPayment)}</b>
               </div>
               <div>
                 <span>{t("Term")}</span>
@@ -207,13 +218,17 @@ export default function Celebration({
                   {loan.months} {t(loan.months === 1 ? "month" : "months")}
                 </b>
               </div>
+              <div>
+                <span>{t("Total to repay")}</span>
+                <b>{usd(loan.total)}</b>
+              </div>
             </motion.div>
             <motion.div className="celebrate-actions" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.9, duration: 0.8, ease: EASE }}>
               <button className="btn btn-ghost" onClick={onClose}>
                 {t("Close")}
               </button>
               <button className="btn btn-primary" onClick={onAccount}>
-                {t("My Account")}
+                {t("View my loan")}
               </button>
             </motion.div>
           </div>

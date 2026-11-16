@@ -2614,30 +2614,46 @@ svg {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0.8rem;
+  gap: 0.2rem;
 }
 .mfield-label {
-  font-size: 1.3rem;
-  color: rgba(255, 255, 255, 0.55);
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 1.2rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+}
+.mfield-hint {
+  text-transform: none;
+  letter-spacing: 0;
+  color: rgba(255, 255, 255, 0.4);
 }
 .mfield input,
 .mfield select {
   width: 100%;
-  height: 4.8rem;
-  padding: 0 1.4rem;
-  border-radius: 1.2rem;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  height: 4.6rem;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
   outline: none;
-  font-size: 1.5rem;
+  font-size: 1.6rem;
+  letter-spacing: 0.01em;
+  color: #fff;
   transition: border-color 0.2s;
+}
+.mfield input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
 }
 .mfield input:focus,
 .mfield select:focus {
-  border-color: rgba(255, 130, 60, 0.85);
+  border-bottom-color: rgba(255, 140, 70, 0.9);
 }
 .mfield.has-error input {
-  border-color: #ff5a4a;
+  border-bottom-color: #ff5a4a;
 }
 .mfield input[type="date"] {
   color-scheme: dark;
@@ -2653,13 +2669,14 @@ svg {
   -webkit-appearance: none;
   appearance: none;
   padding-right: 3.6rem;
+  cursor: pointer;
 }
 .select select option {
   background: #111;
 }
 .select svg {
   position: absolute;
-  right: 1.2rem;
+  right: 0.4rem;
   top: 50%;
   width: 1.6rem;
   height: 1.6rem;
@@ -5034,5 +5051,682 @@ html.has-cursor select {
     white-space: normal;
     text-align: center;
     max-width: 34rem;
+  }
+}
+
+
+/* ---------- Loan flow (apply / pay) — same shell as the auth pages ---------- */
+.lm-overlay {
+  z-index: 110;
+}
+.lm {
+  position: relative;
+  width: min(104rem, 100%);
+  max-height: calc(100vh - 4rem);
+  display: grid;
+  grid-template-columns: 40rem 1fr;
+  border-radius: 2.4rem;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(14, 14, 14, 0.94), rgba(6, 6, 6, 0.97));
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 4rem 10rem rgba(0, 0, 0, 0.7);
+}
+.lm.is-single {
+  width: min(56rem, 100%);
+  grid-template-columns: 1fr;
+}
+.lm-visual {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 5rem 3.6rem 4rem;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+.lm-visual > * {
+  position: relative;
+}
+.lm-visual > .auth-visual-glow {
+  position: absolute;
+}
+.lm-card {
+  position: relative;
+  width: 32rem;
+  height: 20.2rem;
+  perspective: 1000px;
+}
+.lm-card-face {
+  position: absolute;
+  inset: 0;
+}
+.lm-card .vcard-face {
+  padding: 2rem 2.2rem 1.8rem;
+  border-radius: 1.6rem;
+}
+.lm-card .vcard-top .logo {
+  font-size: 2.4rem;
+}
+.lm-card .vcard-chip {
+  width: 4.2rem;
+  height: 3.2rem;
+  margin-top: 1.6rem;
+}
+.lm-card .vcard-num {
+  font-size: 1.8rem;
+  white-space: nowrap;
+}
+.lm-card .vcard-bottom b {
+  font-size: 1.2rem;
+}
+.lm-scan {
+  border-radius: 1.6rem;
+  z-index: 2;
+}
+.vcard-face.is-ext {
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgba(255, 255, 255, 0.16), transparent 50%),
+    linear-gradient(135deg, #3b3b3f 0%, #1f1f22 45%, #111113 100%);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.25),
+    inset 0 -0.3rem 0.8rem rgba(0, 0, 0, 0.5),
+    0 2.4rem 5rem rgba(0, 0, 0, 0.55);
+}
+.vcard-face.is-ext .vcard-flutes {
+  opacity: 0.35;
+}
+.vcard-face.is-ext em {
+  text-transform: uppercase;
+  font-size: 1.5rem;
+  letter-spacing: 0.04em;
+}
+.vcard-bank {
+  font-size: 1.4rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.85);
+}
+.lm-fig {
+  margin-top: 4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.lm-fig-label {
+  font-size: 1.2rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+.lm-fig-val {
+  position: relative;
+  display: inline-grid;
+  margin-top: 0.6rem;
+  font-size: 4.8rem;
+  line-height: 1.1;
+  font-weight: 200;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+}
+.lm-fig-val > span {
+  grid-area: 1 / 1;
+  background: linear-gradient(180deg, #fff, #ffc08a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.lm-fig-sub {
+  margin-top: 0.6rem;
+  font-size: 1.4rem;
+  color: rgba(255, 255, 255, 0.65);
+}
+.lm-facts {
+  width: 100%;
+  margin: 3.2rem 0 0;
+  padding: 1.6rem 1.8rem;
+  display: grid;
+  gap: 1rem;
+  border-radius: 1.4rem;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  font-size: 1.4rem;
+}
+.lm-facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.6rem;
+}
+.lm-facts dt {
+  color: rgba(255, 255, 255, 0.55);
+}
+.lm-facts dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.lm-main {
+  position: relative;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 4.2rem 4.8rem 3.8rem;
+}
+.lm-close {
+  position: absolute;
+  top: 2rem;
+  right: 2rem;
+  z-index: 2;
+}
+.lm-kicker {
+  margin: 0;
+  font-size: 1.2rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ff8a3d;
+}
+.lm-title {
+  margin: 0.8rem 0 0;
+  padding-right: 4rem;
+  font-size: 3.4rem;
+  line-height: 1.1;
+  font-weight: 300;
+  letter-spacing: -0.04em;
+}
+.lm-lead {
+  margin-top: 1.2rem;
+}
+.lm-white {
+  color: #fff;
+  font-weight: 400;
+}
+.lm-steps {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--n), 1fr);
+  margin: 2.6rem 0 3rem;
+  padding: 0.4rem;
+  border-radius: 99rem;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+.lm-steps-pill {
+  position: absolute;
+  left: 0.4rem;
+  top: 0.4rem;
+  bottom: 0.4rem;
+  width: calc((100% - 0.8rem) / var(--n));
+  border-radius: 99rem;
+  background: linear-gradient(180deg, #ff7d1e, #dc460b);
+  box-shadow: 0 0 1.8rem rgba(255, 96, 16, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+}
+.lm-steps button {
+  position: relative;
+  z-index: 1;
+  height: 4.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  font-size: 1.4rem;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.45);
+  transition: color 0.2s;
+}
+.lm-steps button:disabled {
+  cursor: default;
+}
+.lm-steps button.is-done {
+  color: rgba(255, 255, 255, 0.8);
+}
+.lm-steps button.is-done:hover {
+  color: #fff;
+}
+.lm-steps button.is-active {
+  color: #fff;
+}
+.lm-step-n {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  font-size: 1.1rem;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+.lm-steps button.is-done .lm-step-n {
+  background: rgba(255, 106, 20, 0.2);
+  color: #ff9a55;
+  box-shadow: none;
+}
+.lm-step-n svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+.lm-seg {
+  margin: 2.4rem 0 2.2rem;
+  border-radius: 1.8rem;
+}
+.lm-seg .lm-steps-pill {
+  border-radius: 1.4rem;
+}
+.lm-seg button {
+  height: 6rem;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.lm-seg-l {
+  font-size: 1.3rem;
+}
+.lm-seg-s {
+  font-size: 1.5rem;
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.lm-seg button.is-active .lm-seg-s {
+  color: #fff;
+}
+.lm-body {
+  min-height: 38rem;
+}
+.lm-body .mgrid {
+  gap: 2.6rem 2.8rem;
+}
+.lm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+.lm-chips button {
+  height: 3.6rem;
+  padding: 0 1.5rem;
+  border-radius: 99rem;
+  font-size: 1.35rem;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  transition: all 0.2s;
+}
+.lm-chips button:hover {
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+.lm-chips button.is-active {
+  color: #fff;
+  background: rgba(255, 106, 20, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 130, 60, 0.85);
+}
+.lm-promo {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  font-size: 1.4rem;
+  color: #7fe0a4;
+}
+.lm-promo svg {
+  width: 1.6rem;
+  height: 1.6rem;
+}
+.lm-promo b {
+  font-weight: 500;
+}
+.lm-label {
+  display: block;
+  margin-bottom: 1rem;
+}
+.lm-choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+.lm-choice button {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  padding: 1.4rem 1.4rem;
+  border-radius: 1.4rem;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  transition: all 0.2s;
+}
+.lm-choice button:hover {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+.lm-choice button.is-active {
+  background: rgba(255, 106, 20, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 130, 60, 0.85);
+}
+.lm-choice button > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.lm-choice b {
+  display: block;
+  font-size: 1.45rem;
+  font-weight: 400;
+}
+.lm-choice small {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 1.2rem;
+  color: rgba(255, 255, 255, 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lm-mini-card {
+  flex: 0 0 4.4rem;
+  height: 2.9rem;
+  display: grid;
+  place-items: center;
+  border-radius: 0.5rem;
+  background: linear-gradient(135deg, #3b3b3f, #151517);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.7);
+}
+.lm-mini-card svg {
+  width: 1.6rem;
+  height: 1.6rem;
+}
+.lm-mini-card.is-velox {
+  background:
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.12) 0, rgba(255, 255, 255, 0.08) 0.2rem, rgba(0, 0, 0, 0.12) 0.4rem),
+    linear-gradient(135deg, #ff8a2a, #c63e08);
+}
+.lm-radio {
+  flex: 0 0 1.8rem;
+  height: 1.8rem;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  transition: box-shadow 0.2s;
+}
+.lm-choice button.is-active .lm-radio {
+  box-shadow:
+    inset 0 0 0 1px var(--orange),
+    inset 0 0 0 0.45rem #120a06,
+    inset 0 0 0 1rem var(--orange);
+}
+.lm-collapse {
+  overflow: hidden;
+}
+.lm-collapse > .mfield,
+.lm-collapse > .mgrid {
+  padding-top: 2.2rem;
+}
+.lm-collapse .mfield .field-error {
+  margin-bottom: 0.2rem;
+}
+.lm-review {
+  margin-top: 2.4rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.2rem 3.2rem;
+  padding: 1.6rem 1.8rem;
+  border-radius: 1.4rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 106, 20, 0.06));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  font-size: 1.4rem;
+  text-align: left;
+}
+.lm-review.one {
+  width: 100%;
+  grid-template-columns: 1fr;
+}
+.lm-review > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.6rem;
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.55);
+}
+.lm-review b {
+  font-weight: 400;
+  color: #fff;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lm-actions {
+  margin-top: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.2rem;
+}
+.lm-actions.center {
+  justify-content: center;
+}
+.lm-actions .btn {
+  height: 5.4rem;
+  gap: 0.8rem;
+}
+.btn-ic {
+  width: 1.6rem;
+  height: 1.6rem;
+}
+.lm-secure {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.8rem;
+  font-size: 1.3rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+.lm-secure svg {
+  width: 1.4rem;
+  height: 1.4rem;
+}
+.lm-proc {
+  min-height: 40rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.lm-proc.center {
+  align-items: center;
+  text-align: center;
+}
+.lm-proc.center .lm-kicker {
+  margin-top: 2rem;
+}
+.lm-proc.center .lm-kicker + .lm-title {
+  margin-top: 0.8rem;
+}
+.lm-proc.center .lm-lead {
+  max-width: 44rem;
+  line-height: 2.2rem;
+}
+.lm-proc.center .lm-title {
+  padding-right: 0;
+  margin-top: 2rem;
+}
+.lm-proc .small-muted {
+  margin-top: 1rem;
+}
+.lm-checks {
+  margin: 3.2rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 1.8rem;
+  font-size: 1.6rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+.lm-checks li {
+  display: flex;
+  align-items: center;
+  gap: 1.4rem;
+  transition: color 0.3s;
+}
+.lm-checks li.is-busy {
+  color: #fff;
+}
+.lm-checks li.is-done {
+  color: rgba(255, 255, 255, 0.85);
+}
+.lm-check-ic {
+  flex: 0 0 2.8rem;
+  height: 2.8rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  color: var(--orange);
+  transition: all 0.3s;
+}
+.lm-checks li.is-done .lm-check-ic {
+  background: linear-gradient(180deg, #ff7d1e, #dc460b);
+  box-shadow: 0 0 1.4rem rgba(255, 96, 16, 0.45);
+  color: #fff;
+}
+.lm-check-ic svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+.celebrate-badge.is-green {
+  background: linear-gradient(180deg, #8ff0b4, #2fae66);
+  box-shadow: 0 0 3rem rgba(80, 220, 140, 0.55);
+}
+.lm-ring-wrap {
+  position: relative;
+  width: 24rem;
+  height: 24rem;
+}
+.lm-ring {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.lm-ring-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 7;
+}
+.lm-ring-bar {
+  fill: none;
+  stroke-width: 7;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px rgba(255, 106, 20, 0.6));
+}
+.lm-ring-copy {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.lm-ring-copy > span:first-child {
+  font-size: 1.2rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+.lm-ring-copy .lm-fig-val {
+  font-size: 3.4rem;
+}
+.lm-ring-copy small {
+  margin-top: 0.4rem;
+  font-size: 1.3rem;
+  color: #ff9a55;
+}
+.lm .loan-pick {
+  margin: 2.4rem 0 0;
+}
+.lm .check {
+  margin-top: 2.4rem;
+}
+
+@media (max-width: 1023.98px) {
+  .lm-overlay {
+    place-items: start center;
+  }
+  .lm {
+    grid-template-columns: 1fr;
+    margin: auto 0;
+    max-height: none;
+    border-radius: 2rem;
+  }
+  .lm-visual {
+    padding: 2.6rem 2rem 2rem;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .lm-card {
+    width: 26rem;
+    height: 16.4rem;
+  }
+  .lm-card .vcard-face {
+    padding: 1.5rem 1.7rem;
+    border-radius: 1.4rem;
+  }
+  .lm-card .vcard-top .logo {
+    font-size: 2rem;
+  }
+  .lm-card .vcard-chip {
+    width: 3.4rem;
+    height: 2.6rem;
+    margin-top: 1rem;
+  }
+  .lm-card .vcard-num {
+    font-size: 1.5rem;
+  }
+  .lm-card .vcard-bottom b {
+    font-size: 1.1rem;
+  }
+  .lm-fig {
+    margin-top: 2rem;
+  }
+  .lm-fig-val {
+    font-size: 3.6rem;
+  }
+  .lm-facts {
+    display: none;
+  }
+  .lm-ring-wrap {
+    width: 16rem;
+    height: 16rem;
+  }
+  .lm-ring-copy .lm-fig-val {
+    font-size: 2.6rem;
+  }
+  .lm-main {
+    padding: 2.6rem 2rem 2.4rem;
+    overflow: visible;
+  }
+  .lm-title {
+    font-size: 2.8rem;
+  }
+  .lm-step-l {
+    display: none;
+  }
+  .lm-steps button.is-active .lm-step-l {
+    display: inline;
+  }
+  .lm-review {
+    grid-template-columns: 1fr;
+  }
+  .lm-actions .btn {
+    flex: 1;
+  }
+  .lm-secure {
+    display: none;
+  }
+  .lm-choice {
+    grid-template-columns: 1fr;
+  }
+  .lm-body {
+    min-height: 0;
+  }
+  .lm-proc {
+    min-height: 26rem;
   }
 }

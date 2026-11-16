@@ -16,6 +16,11 @@ export type Loan = {
   email: string;
   status: "active" | "closed";
   payments: { date: string; amount: number }[];
+  /** Where the money was sent: the customer's Velox card or an external bank card. */
+  payout?: "velox" | "card";
+  card4?: string;
+  purpose?: string;
+  closedAt?: string;
 };
 
 export type Subscription = { email: string; name?: string; source: string; date: string };
@@ -246,21 +251,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return loan;
       },
       pay: (loanId, amount) => {
-        let updated: Loan | undefined;
-        setData((d) => ({
-          ...d,
-          loans: d.loans.map((l) => {
-            if (l.id !== loanId) return l;
-            const paid = Math.min(l.total, Math.round((l.paid + amount) * 100) / 100);
-            updated = {
-              ...l,
-              paid,
-              status: paid >= l.total ? "closed" : "active",
-              payments: [{ date: new Date().toISOString(), amount }, ...l.payments],
-            };
-            return updated;
-          }),
-        }));
+        const cur = data.loans.find((l) => l.id === loanId);
+        if (!cur || cur.status !== "active") return undefined;
+        const paid = Math.min(cur.total, Math.round((cur.paid + amount) * 100) / 100);
+        const closed = cur.total - paid < 0.01;
+        const now = new Date().toISOString();
+        const updated: Loan = {
+          ...cur,
+          paid: closed ? cur.total : paid,
+          status: closed ? "closed" : "active",
+          closedAt: closed ? now : undefined,
+          payments: [{ date: now, amount }, ...cur.payments],
+        };
+        setData((d) => ({ ...d, loans: d.loans.map((l) => (l.id === loanId ? updated : l)) }));
         return updated;
       },
       subscribe: (s) => {
@@ -284,6 +287,14 @@ export function useStore() {
   const c = useContext(StoreCtx);
   if (!c) throw new Error("useStore outside provider");
   return c;
+}
+
+/** Each signed-in customer gets a stable virtual Velox card number. */
+export function veloxCard(seed?: string) {
+  if (!seed) return { first4: "4821", last4: "7390" };
+  let h = 7;
+  for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return { first4: "4821", last4: String(1000 + (h % 9000)) };
 }
 
 export const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s.trim());

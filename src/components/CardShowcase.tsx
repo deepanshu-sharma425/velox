@@ -11,7 +11,7 @@ import {
   useTransform,
 } from "framer-motion";
 import { Logo } from "./Icons";
-import { useStore } from "@/lib/store";
+import { useStore, veloxCard } from "@/lib/store";
 
 /**
  * Scroll story (progress 0 → 1 across a pinned section):
@@ -21,7 +21,8 @@ import { useStore } from "@/lib/store";
  *  0.80–1.00  hold — captions in, card follows the mouse
  */
 export default function CardShowcase() {
-  const { t, open } = useStore();
+  const { t, open, user } = useStore();
+  const card = veloxCard(user?.id);
   const ref = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end end"] });
   const p = useSpring(scrollYProgress, { stiffness: 140, damping: 28, mass: 0.35 });
@@ -133,11 +134,13 @@ export default function CardShowcase() {
                   <i />
                   <i />
                 </div>
-                <div className="vcard-num">4821&nbsp;&nbsp;••••&nbsp;&nbsp;••••&nbsp;&nbsp;7390</div>
+                <div className="vcard-num">
+                  {card.first4}&nbsp;&nbsp;••••&nbsp;&nbsp;••••&nbsp;&nbsp;{card.last4}
+                </div>
                 <div className="vcard-bottom">
                   <div>
                     <span>{t("Card holder")}</span>
-                    <b>ALEX MORGAN</b>
+                    <b>{(user?.name.trim() || t("YOUR NAME")).toUpperCase().slice(0, 22)}</b>
                   </div>
                   <div>
                     <span>{t("Valid thru")}</span>

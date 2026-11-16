@@ -37,18 +37,25 @@ export function VCardFace({
   sheen,
   caret,
   placeholder = "YOUR NAME",
+  number = "4821\u00a0\u00a0••••\u00a0\u00a0••••\u00a0\u00a07390",
+  tag = "debit",
+  variant,
 }: {
   holder: string;
   sheen?: MotionValue<string> | string;
   caret?: boolean;
   placeholder?: string;
+  number?: string;
+  tag?: string;
+  /** "ext" renders a graphite third-party bank card instead of the orange Velox one. */
+  variant?: "ext";
 }) {
   return (
-    <div className="vcard-face">
+    <div className={`vcard-face ${variant === "ext" ? "is-ext" : ""}`}>
       <div className="vcard-flutes" />
       {sheen && <motion.div className="vcard-sheen" style={{ background: sheen }} />}
       <div className="vcard-top">
-        <Logo />
+        {variant === "ext" ? <span className="vcard-bank">Bank card</span> : <Logo />}
         <svg viewBox="0 0 24 24" className="vcard-nfc" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
           <path d="M8.5 8.5a5 5 0 0 1 0 7M12 6a8.5 8.5 0 0 1 0 12M15.5 3.5a12 12 0 0 1 0 17" />
         </svg>
@@ -58,13 +65,13 @@ export function VCardFace({
         <i />
         <i />
       </div>
-      <div className="vcard-num">4821&nbsp;&nbsp;••••&nbsp;&nbsp;••••&nbsp;&nbsp;7390</div>
+      <div className="vcard-num">{number}</div>
       <div className="vcard-bottom">
         <div>
           <span>Card holder</span>
           <CardHolder text={holder} placeholder={placeholder} caret={caret} />
         </div>
-        <em>debit</em>
+        <em>{tag}</em>
       </div>
     </div>
   );
